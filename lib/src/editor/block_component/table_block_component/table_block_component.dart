@@ -36,8 +36,8 @@ class TableStyle {
 
   const TableStyle({
     this.colWidth = 160,
-    this.rowHeight = 40,
-    this.colMinimumWidth = 40,
+    this.rowHeight = 20,
+    this.colMinimumWidth = 20,
     this.borderWidth = 2,
     this.addIcon = TableDefaults.addIcon,
     this.handlerIcon = TableDefaults.handlerIcon,
@@ -51,9 +51,9 @@ class TableDefaults {
 
   static double colWidth = 160.0;
 
-  static double rowHeight = 40.0;
+  static double rowHeight = 20.0;
 
-  static double colMinimumWidth = 40.0;
+  static double colMinimumWidth = 20.0;
 
   static double borderWidth = 2.0;
 
@@ -117,8 +117,7 @@ class TableBlockComponentBuilder extends BlockComponentBuilder {
   BlockComponentValidate get validate => (node) {
         // check the node is valid
         if (node.attributes.isEmpty) {
-          AppFlowyEditorLog.editor
-              .debug('TableBlockComponentBuilder: node is empty');
+          AppFlowyEditorLog.editor.debug('TableBlockComponentBuilder: node is empty');
           return false;
         }
 
@@ -137,8 +136,7 @@ class TableBlockComponentBuilder extends BlockComponentBuilder {
         // check its children
         final children = node.children;
         if (children.isEmpty) {
-          AppFlowyEditorLog.editor
-              .debug('TableBlockComponentBuilder: children is empty');
+          AppFlowyEditorLog.editor.debug('TableBlockComponentBuilder: children is empty');
           return false;
         }
 
@@ -197,8 +195,7 @@ class TableBlockComponentWidget extends BlockComponentStatefulWidget {
   final TableStyle tableStyle;
 
   @override
-  State<TableBlockComponentWidget> createState() =>
-      _TableBlockComponentWidgetState();
+  State<TableBlockComponentWidget> createState() => _TableBlockComponentWidgetState();
 }
 
 class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
@@ -217,7 +214,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
     Widget child = Scrollbar(
       controller: _scrollController,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.only(top: 10, left: 10, bottom: 4),
+        // padding: const EdgeInsets.only(top: 10, left: 10, bottom: 4),
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
         child: TableView(
@@ -281,10 +278,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
     final tableBox = tableKey.currentContext?.findRenderObject();
     if (parentBox is RenderBox && tableBox is RenderBox) {
       return [
-        (shiftWithBaseOffset
-                ? tableBox.localToGlobal(Offset.zero, ancestor: parentBox)
-                : Offset.zero) &
-            tableBox.size,
+        (shiftWithBaseOffset ? tableBox.localToGlobal(Offset.zero, ancestor: parentBox) : Offset.zero) & tableBox.size,
       ];
     }
     return [Offset.zero & _renderBox.size];

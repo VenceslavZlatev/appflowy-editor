@@ -104,8 +104,7 @@ class SelectionMenuItem {
   factory SelectionMenuItem.node({
     required String Function() getName,
     required List<String> keywords,
-    required Node Function(EditorState editorState, BuildContext context)
-        nodeBuilder,
+    required Node Function(EditorState editorState, BuildContext context) nodeBuilder,
     IconData? iconData,
     Widget Function(
       EditorState editorState,
@@ -133,9 +132,7 @@ class SelectionMenuItem {
         if (iconData != null) {
           return Icon(
             iconData,
-            color: onSelected
-                ? style.selectionMenuItemSelectedIconColor
-                : style.selectionMenuItemIconColor,
+            color: onSelected ? style.selectionMenuItemSelectedIconColor : style.selectionMenuItemIconColor,
             size: 18.0,
           );
         } else if (iconBuilder != null) {
@@ -328,8 +325,7 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget> {
 
     AppFlowyEditorLog.ui.debug('$items');
 
-    if (keyword.length >= maxKeywordLength + 2 &&
-        !(widget.deleteSlashByDefault && _searchCounter < 2)) {
+    if (keyword.length >= maxKeywordLength + 2 && !(widget.deleteSlashByDefault && _searchCounter < 2)) {
       return widget.onExit();
     }
     setState(() {
@@ -526,8 +522,7 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget> {
 
     if (event.logicalKey == LogicalKeyboardKey.enter) {
       if (0 <= _selectedIndex && _selectedIndex < _showingItems.length) {
-        _showingItems[_selectedIndex]
-            .handler(widget.editorState, widget.menuService, context);
+        _showingItems[_selectedIndex].handler(widget.editorState, widget.menuService, context);
         return KeyEventResult.handled;
       }
     } else if (event.logicalKey == LogicalKeyboardKey.escape) {
@@ -558,11 +553,9 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget> {
       newSelectedIndex -= widget.maxItemInRow;
       if (newSelectedIndex < 0) {
         // Calculate the last row's starting position
-        final lastRowStart = (_showingItems.length - 1) -
-            ((_showingItems.length - 1) % widget.maxItemInRow);
+        final lastRowStart = (_showingItems.length - 1) - ((_showingItems.length - 1) % widget.maxItemInRow);
         // Move to the same column in the last row
-        newSelectedIndex =
-            lastRowStart + (_selectedIndex % widget.maxItemInRow);
+        newSelectedIndex = lastRowStart + (_selectedIndex % widget.maxItemInRow);
         if (newSelectedIndex >= _showingItems.length) {
           newSelectedIndex = _showingItems.length - 1;
         }

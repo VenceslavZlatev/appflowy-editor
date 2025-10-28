@@ -26,9 +26,7 @@ class AppFlowyEditorLocalizations {
   static const AppLocalizationDelegate delegate = AppLocalizationDelegate();
 
   static Future<AppFlowyEditorLocalizations> load(Locale locale) {
-    final name = (locale.countryCode?.isEmpty ?? false)
-        ? locale.languageCode
-        : locale.toString();
+    final name = (locale.countryCode?.isEmpty ?? false) ? locale.languageCode : locale.toString();
     final localeName = Intl.canonicalizedLocale(name);
     return initializeMessages(localeName).then((_) {
       Intl.defaultLocale = localeName;
@@ -47,8 +45,7 @@ class AppFlowyEditorLocalizations {
   }
 
   static AppFlowyEditorLocalizations? maybeOf(BuildContext context) {
-    return Localizations.of<AppFlowyEditorLocalizations>(
-        context, AppFlowyEditorLocalizations);
+    return Localizations.of<AppFlowyEditorLocalizations>(context, AppFlowyEditorLocalizations);
   }
 
   /// `Bold`
@@ -94,7 +91,7 @@ class AppFlowyEditorLocalizations {
   /// `H1`
   String get heading1 {
     return Intl.message(
-      'H1',
+      'Heading 1',
       name: 'heading1',
       desc: '',
       args: [],
@@ -104,7 +101,7 @@ class AppFlowyEditorLocalizations {
   /// `H2`
   String get heading2 {
     return Intl.message(
-      'H2',
+      'Heading 2',
       name: 'heading2',
       desc: '',
       args: [],
@@ -114,7 +111,7 @@ class AppFlowyEditorLocalizations {
   /// `H3`
   String get heading3 {
     return Intl.message(
-      'H3',
+      'Heading 3',
       name: 'heading3',
       desc: '',
       args: [],
@@ -1882,8 +1879,7 @@ class AppFlowyEditorLocalizations {
   }
 }
 
-class AppLocalizationDelegate
-    extends LocalizationsDelegate<AppFlowyEditorLocalizations> {
+class AppLocalizationDelegate extends LocalizationsDelegate<AppFlowyEditorLocalizations> {
   const AppLocalizationDelegate();
 
   List<Locale> get supportedLocales {
@@ -1917,8 +1913,7 @@ class AppLocalizationDelegate
   @override
   bool isSupported(Locale locale) => _isSupported(locale);
   @override
-  Future<AppFlowyEditorLocalizations> load(Locale locale) =>
-      AppFlowyEditorLocalizations.load(locale);
+  Future<AppFlowyEditorLocalizations> load(Locale locale) => AppFlowyEditorLocalizations.load(locale);
   @override
   bool shouldReload(AppLocalizationDelegate old) => false;
 

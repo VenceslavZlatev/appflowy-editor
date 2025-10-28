@@ -36,6 +36,7 @@ CharacterShortcutEvent customSlashCommand(
   bool singleColumn = true,
   SelectionMenuStyle style = SelectionMenuStyle.light,
   Set<String> supportSlashMenuNodeTypes = _defaultSupportSlashMenuNodeTypes,
+  Widget? customWidget,
 }) {
   return CharacterShortcutEvent(
     key: 'show the slash menu',
@@ -48,6 +49,7 @@ CharacterShortcutEvent customSlashCommand(
       singleColumn: singleColumn,
       style: style,
       supportSlashMenuNodeTypes: supportSlashMenuNodeTypes,
+      customWidget: customWidget,
     ),
   );
 }
@@ -61,6 +63,7 @@ Future<bool> _showSlashMenu(
   bool deleteKeywordsByDefault = false,
   SelectionMenuStyle style = SelectionMenuStyle.light,
   Set<String> supportSlashMenuNodeTypes = _defaultSupportSlashMenuNodeTypes,
+  Widget? customWidget,
 }) async {
   if (PlatformExtension.isMobile) {
     return false;
@@ -85,8 +88,7 @@ Future<bool> _showSlashMenu(
   final node = editorState.getNodeAtPath(selection.start.path);
 
   // only enable in white-list nodes
-  if (node == null ||
-      !_isSupportSlashMenuNode(node, supportSlashMenuNodeTypes)) {
+  if (node == null || !_isSupportSlashMenuNode(node, supportSlashMenuNodeTypes)) {
     return false;
   }
 
@@ -108,6 +110,7 @@ Future<bool> _showSlashMenu(
       deleteKeywordsByDefault: deleteKeywordsByDefault,
       singleColumn: singleColumn,
       style: style,
+      customWidget: customWidget,
     );
     if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       _selectionMenuService?.show();

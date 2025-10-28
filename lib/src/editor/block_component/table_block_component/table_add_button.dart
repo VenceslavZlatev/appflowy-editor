@@ -34,14 +34,11 @@ class _TableActionButtonState extends State<TableActionButton> {
         child: Center(
           child: Visibility(
             visible: _visible,
-            child: Card(
-              elevation: 1.0,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => widget.onPressed(),
-                  child: widget.icon,
-                ),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => widget.onPressed(),
+                child: widget.icon,
               ),
             ),
           ),

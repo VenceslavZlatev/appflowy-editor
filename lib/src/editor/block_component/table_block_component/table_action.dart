@@ -69,6 +69,20 @@ class TableActions {
       _setRowBgColor(node, position, editorState, color);
     }
   }
+
+  static void move(
+    Node node,
+    int fromPosition,
+    int toPosition,
+    EditorState editorState,
+    TableDirection dir,
+  ) {
+    if (dir == TableDirection.col) {
+      _moveCol(node, fromPosition, toPosition, editorState);
+    } else {
+      _moveRow(node, fromPosition, toPosition, editorState);
+    }
+  }
 }
 
 void _addCol(Node tableNode, int position, EditorState editorState) {
@@ -99,12 +113,9 @@ void _addCol(Node tableNode, int position, EditorState editorState) {
     );
     node.insert(paragraphNode());
     final firstCellInRow = getCellNode(tableNode, 0, i);
-    if (firstCellInRow?.attributes
-            .containsKey(TableCellBlockKeys.rowBackgroundColor) ??
-        false) {
+    if (firstCellInRow?.attributes.containsKey(TableCellBlockKeys.rowBackgroundColor) ?? false) {
       node.updateAttributes({
-        TableCellBlockKeys.rowBackgroundColor:
-            firstCellInRow!.attributes[TableCellBlockKeys.rowBackgroundColor],
+        TableCellBlockKeys.rowBackgroundColor: firstCellInRow!.attributes[TableCellBlockKeys.rowBackgroundColor],
       });
     }
 
@@ -131,14 +142,39 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen];
   final int colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
-  // insert new rows
+  // Create a single transaction for all operations
+  final transaction = editorState.transaction;
   var error = false;
 
-  // generate new table cell nodes & update node attributes
+  // Update existing row positions if needed
+  if (position != rowsLen) {
+    for (var i = 0; i < colsLen; i++) {
+      for (var j = position; j < rowsLen; j++) {
+        final cellNode = getCellNode(tableNode, i, j);
+        if (cellNode == null) {
+          error = true;
+          break;
+        }
+        transaction.updateNode(
+          cellNode,
+          {
+            TableCellBlockKeys.rowPosition: j + 1,
+          },
+        );
+      }
+      if (error) break;
+    }
+  }
+
+  if (error) {
+    AppFlowyEditorLog.editor.debug('unable to insert row - cell not found');
+    return;
+  }
+
+  // Generate and insert new table cell nodes
   for (var i = 0; i < colsLen; i++) {
     final firstCellInCol = getCellNode(tableNode, i, 0);
-    final colBgColor =
-        firstCellInCol?.attributes[TableCellBlockKeys.colBackgroundColor];
+    final colBgColor = firstCellInCol?.attributes[TableCellBlockKeys.colBackgroundColor];
     final containsColBgColor = colBgColor != null;
 
     final node = Node(
@@ -146,8 +182,7 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
       attributes: {
         TableCellBlockKeys.colPosition: i,
         TableCellBlockKeys.rowPosition: position,
-        if (containsColBgColor)
-          TableCellBlockKeys.colBackgroundColor: colBgColor,
+        if (containsColBgColor) TableCellBlockKeys.colBackgroundColor: colBgColor,
       },
       children: [paragraphNode()],
     );
@@ -169,27 +204,7 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
       insertPath = cellInPrevRow.path.next;
     }
 
-    final transaction = editorState.transaction;
-
-    if (position != rowsLen) {
-      for (var j = position; j < rowsLen; j++) {
-        final cellNode = getCellNode(tableNode, i, j);
-        if (cellNode == null) {
-          error = true;
-          break;
-        }
-        transaction.updateNode(
-          cellNode,
-          {
-            TableCellBlockKeys.rowPosition: j + 1,
-          },
-        );
-      }
-    }
-
     transaction.insertNode(insertPath, node);
-
-    await editorState.apply(transaction, withUpdateSelection: false);
   }
 
   if (error) {
@@ -197,13 +212,12 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
     return;
   }
 
-  final transaction = editorState.transaction;
-
-  // update the row length
+  // Update the row length
   transaction.updateNode(tableNode, {
     TableBlockKeys.rowsLen: rowsLen + 1,
   });
 
+  // Apply all operations in a single transaction
   await editorState.apply(transaction, withUpdateSelection: false);
 }
 
@@ -227,7 +241,7 @@ void _deleteCol(Node tableNode, int col, EditorState editorState) {
     }
     transaction.deleteNodes(nodes);
 
-    _updateCellPositions(tableNode, editorState, col + 1, 0, -1, 0);
+    _updateCellPositions(tableNode, transaction, col + 1, 0, -1, 0);
 
     transaction.updateNode(tableNode, {TableBlockKeys.colsLen: colsLen - 1});
   }
@@ -255,7 +269,7 @@ void _deleteRow(Node tableNode, int row, EditorState editorState) {
     }
     transaction.deleteNodes(nodes);
 
-    _updateCellPositions(tableNode, editorState, 0, row + 1, 0, -1);
+    _updateCellPositions(tableNode, transaction, 0, row + 1, 0, -1);
 
     transaction.updateNode(tableNode, {TableBlockKeys.rowsLen: rowsLen - 1});
   }
@@ -286,7 +300,7 @@ void _duplicateCol(Node tableNode, int col, EditorState editorState) {
     nodes,
   );
 
-  _updateCellPositions(tableNode, editorState, col + 1, 0, 1, 0);
+  _updateCellPositions(tableNode, transaction, col + 1, 0, 1, 0);
 
   transaction.updateNode(tableNode, {TableBlockKeys.colsLen: colsLen + 1});
 
@@ -294,15 +308,29 @@ void _duplicateCol(Node tableNode, int col, EditorState editorState) {
 }
 
 void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
-  Transaction transaction = editorState.transaction;
-  _updateCellPositions(tableNode, editorState, 0, row + 1, 0, 1);
-  await editorState.apply(transaction, withUpdateSelection: false);
-
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
+
+  // Create a single transaction for all operations
+  final transaction = editorState.transaction;
+
+  // Update cell positions for rows after the insertion point
+  final int rowsLenCurrent = tableNode.attributes[TableBlockKeys.rowsLen];
+  for (var i = 0; i < colsLen; i++) {
+    for (var j = row + 1; j < rowsLenCurrent; j++) {
+      final cellNode = getCellNode(tableNode, i, j);
+      if (cellNode != null) {
+        transaction.updateNode(cellNode, {
+          TableCellBlockKeys.colPosition: i,
+          TableCellBlockKeys.rowPosition: j + 1,
+        });
+      }
+    }
+  }
+
+  // Insert duplicated cells
   for (var i = 0; i < colsLen; i++) {
     final node = getCellNode(tableNode, i, row)!;
-    transaction = editorState.transaction;
     transaction.insertNode(
       node.path.next,
       node.copyWith(
@@ -313,12 +341,13 @@ void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
         },
       ),
     );
-    await editorState.apply(transaction, withUpdateSelection: false);
   }
 
-  transaction = editorState.transaction;
+  // Update row length
   transaction.updateNode(tableNode, {TableBlockKeys.rowsLen: rowsLen + 1});
-  editorState.apply(transaction, withUpdateSelection: false);
+
+  // Apply all operations in a single transaction
+  await editorState.apply(transaction, withUpdateSelection: false);
 }
 
 void _setColBgColor(
@@ -371,10 +400,14 @@ void _clearCol(
   final rowsLen = tableNode.attributes[TableBlockKeys.rowsLen];
   for (var i = 0; i < rowsLen; i++) {
     final node = getCellNode(tableNode, col, i)!;
-    transaction.insertNode(
-      node.children.first.path,
-      paragraphNode(text: ''),
-    );
+
+    // Only insert if the cell has children
+    if (node.children.isNotEmpty) {
+      transaction.insertNode(
+        node.children.first.path,
+        paragraphNode(text: ''),
+      );
+    }
   }
 
   editorState.apply(transaction, withUpdateSelection: false);
@@ -390,10 +423,14 @@ void _clearRow(
   final colsLen = tableNode.attributes[TableBlockKeys.colsLen];
   for (var i = 0; i < colsLen; i++) {
     final node = getCellNode(tableNode, i, row)!;
-    transaction.insertNode(
-      node.children.first.path,
-      paragraphNode(text: ''),
-    );
+
+    // Only insert if the cell has children
+    if (node.children.isNotEmpty) {
+      transaction.insertNode(
+        node.children.first.path,
+        paragraphNode(text: ''),
+      );
+    }
   }
 
   editorState.apply(transaction, withUpdateSelection: false);
@@ -411,9 +448,7 @@ dynamic newCellNode(Node tableNode, n) {
     )!;
     if (row < rowsLen) {
       nodeHeight = double.tryParse(
-            getCellNode(tableNode, 0, row)!
-                .attributes[TableCellBlockKeys.height]
-                .toString(),
+            getCellNode(tableNode, 0, row)!.attributes[TableCellBlockKeys.height].toString(),
           ) ??
           nodeHeight;
     }
@@ -426,9 +461,7 @@ dynamic newCellNode(Node tableNode, n) {
     )!;
     if (col < colsLen) {
       nodeWidth = double.tryParse(
-            getCellNode(tableNode, col, 0)!
-                .attributes[TableCellBlockKeys.width]
-                .toString(),
+            getCellNode(tableNode, col, 0)!.attributes[TableCellBlockKeys.width].toString(),
           ) ??
           nodeWidth;
     }
@@ -440,14 +473,12 @@ dynamic newCellNode(Node tableNode, n) {
 
 void _updateCellPositions(
   Node tableNode,
-  EditorState editorState,
+  Transaction transaction,
   int fromCol,
   int fromRow,
   int addToCol,
   int addToRow,
 ) {
-  final transaction = editorState.transaction;
-
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
@@ -457,6 +488,192 @@ void _updateCellPositions(
         TableCellBlockKeys.colPosition: i + addToCol,
         TableCellBlockKeys.rowPosition: j + addToRow,
       });
+    }
+  }
+}
+
+void _moveCol(Node tableNode, int fromCol, int toCol, EditorState editorState) {
+  if (fromCol == toCol) return;
+
+  final transaction = editorState.transaction;
+  final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen];
+
+  // Store the cells we want to move
+  List<Map<String, dynamic>> movingCells = [];
+  for (var i = 0; i < rowsLen; i++) {
+    final node = getCellNode(tableNode, fromCol, i)!;
+    movingCells.add({
+      'attributes': Map<String, dynamic>.from(node.attributes),
+      'children': node.children.map((child) => child.copyWith()).toList(),
+    });
+  }
+
+  if (fromCol < toCol) {
+    // Moving right: shift cells left
+    for (var col = fromCol; col < toCol; col++) {
+      for (var row = 0; row < rowsLen; row++) {
+        final nextCell = getCellNode(tableNode, col + 1, row)!;
+        final currentCell = getCellNode(tableNode, col, row)!;
+
+        // Copy attributes from next cell to current cell
+        transaction.updateNode(currentCell, {
+          ...Map<String, dynamic>.from(nextCell.attributes),
+          TableCellBlockKeys.colPosition: col,
+          TableCellBlockKeys.rowPosition: row,
+        });
+
+        // Replace children
+        for (var child in currentCell.children) {
+          transaction.deleteNode(child);
+        }
+        for (var i = 0; i < nextCell.children.length; i++) {
+          transaction.insertNode(
+            currentCell.path.child(i),
+            nextCell.children[i].copyWith(),
+          );
+        }
+      }
+    }
+  } else {
+    // Moving left: shift cells right
+    for (var col = fromCol; col > toCol; col--) {
+      for (var row = 0; row < rowsLen; row++) {
+        final prevCell = getCellNode(tableNode, col - 1, row)!;
+        final currentCell = getCellNode(tableNode, col, row)!;
+
+        // Copy attributes from previous cell to current cell
+        transaction.updateNode(currentCell, {
+          ...Map<String, dynamic>.from(prevCell.attributes),
+          TableCellBlockKeys.colPosition: col,
+          TableCellBlockKeys.rowPosition: row,
+        });
+
+        // Replace children
+        for (var child in currentCell.children) {
+          transaction.deleteNode(child);
+        }
+        for (var i = 0; i < prevCell.children.length; i++) {
+          transaction.insertNode(
+            currentCell.path.child(i),
+            prevCell.children[i].copyWith(),
+          );
+        }
+      }
+    }
+  }
+
+  // Place the moved cells at the target position
+  for (var row = 0; row < rowsLen; row++) {
+    final targetCell = getCellNode(tableNode, toCol, row)!;
+    final cellData = movingCells[row];
+
+    transaction.updateNode(targetCell, {
+      ...cellData['attributes'],
+      TableCellBlockKeys.colPosition: toCol,
+      TableCellBlockKeys.rowPosition: row,
+    });
+
+    // Replace children with the original ones
+    for (var child in targetCell.children) {
+      transaction.deleteNode(child);
+    }
+    final children = cellData['children'] as List<Node>;
+    for (var i = 0; i < children.length; i++) {
+      transaction.insertNode(targetCell.path.child(i), children[i]);
+    }
+  }
+
+  editorState.apply(transaction, withUpdateSelection: false);
+}
+
+void _moveRow(Node tableNode, int fromRow, int toRow, EditorState editorState) {
+  if (fromRow == toRow) return;
+
+  final transaction = editorState.transaction;
+  final int colsLen = tableNode.attributes[TableBlockKeys.colsLen];
+
+  // Store the cells we want to move
+  List<Map<String, dynamic>> movingCells = [];
+  for (var i = 0; i < colsLen; i++) {
+    final node = getCellNode(tableNode, i, fromRow)!;
+    movingCells.add({
+      'attributes': Map<String, dynamic>.from(node.attributes),
+      'children': node.children.map((child) => child.copyWith()).toList(),
+    });
+  }
+
+  if (fromRow < toRow) {
+    // Moving down: shift cells up
+    for (var row = fromRow; row < toRow; row++) {
+      for (var col = 0; col < colsLen; col++) {
+        final nextCell = getCellNode(tableNode, col, row + 1)!;
+        final currentCell = getCellNode(tableNode, col, row)!;
+
+        // Copy attributes from next cell to current cell
+        transaction.updateNode(currentCell, {
+          ...Map<String, dynamic>.from(nextCell.attributes),
+          TableCellBlockKeys.colPosition: col,
+          TableCellBlockKeys.rowPosition: row,
+        });
+
+        // Replace children
+        for (var child in currentCell.children) {
+          transaction.deleteNode(child);
+        }
+        for (var i = 0; i < nextCell.children.length; i++) {
+          transaction.insertNode(
+            currentCell.path.child(i),
+            nextCell.children[i].copyWith(),
+          );
+        }
+      }
+    }
+  } else {
+    // Moving up: shift cells down
+    for (var row = fromRow; row > toRow; row--) {
+      for (var col = 0; col < colsLen; col++) {
+        final prevCell = getCellNode(tableNode, col, row - 1)!;
+        final currentCell = getCellNode(tableNode, col, row)!;
+
+        // Copy attributes from previous cell to current cell
+        transaction.updateNode(currentCell, {
+          ...Map<String, dynamic>.from(prevCell.attributes),
+          TableCellBlockKeys.colPosition: col,
+          TableCellBlockKeys.rowPosition: row,
+        });
+
+        // Replace children
+        for (var child in currentCell.children) {
+          transaction.deleteNode(child);
+        }
+        for (var i = 0; i < prevCell.children.length; i++) {
+          transaction.insertNode(
+            currentCell.path.child(i),
+            prevCell.children[i].copyWith(),
+          );
+        }
+      }
+    }
+  }
+
+  // Place the moved cells at the target position
+  for (var col = 0; col < colsLen; col++) {
+    final targetCell = getCellNode(tableNode, col, toRow)!;
+    final cellData = movingCells[col];
+
+    transaction.updateNode(targetCell, {
+      ...cellData['attributes'],
+      TableCellBlockKeys.colPosition: col,
+      TableCellBlockKeys.rowPosition: toRow,
+    });
+
+    // Replace children with the original ones
+    for (var child in targetCell.children) {
+      transaction.deleteNode(child);
+    }
+    final children = cellData['children'] as List<Node>;
+    for (var i = 0; i < children.length; i++) {
+      transaction.insertNode(targetCell.path.child(i), children[i]);
     }
   }
 

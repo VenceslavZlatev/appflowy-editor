@@ -29,6 +29,7 @@ class SelectionMenu extends SelectionMenuService {
     this.singleColumn = false,
     this.menuHeight = 300,
     this.menuWidth = 300,
+    this.customWidget,
   });
 
   final BuildContext context;
@@ -39,7 +40,7 @@ class SelectionMenu extends SelectionMenuService {
   final bool singleColumn;
   final double menuHeight;
   final double menuWidth;
-
+  final Widget? customWidget;
   @override
   final SelectionMenuStyle style;
 
@@ -60,8 +61,7 @@ class SelectionMenu extends SelectionMenuService {
     _selectionMenuEntry = null;
 
     // workaround: SelectionService has been released after hot reload.
-    final isSelectionDisposed =
-        editorState.service.selectionServiceKey.currentState == null;
+    final isSelectionDisposed = editorState.service.selectionServiceKey.currentState == null;
     if (!isSelectionDisposed) {
       final selectionService = editorState.service.selectionService;
       // focus to reload the selection after the menu dismissed.
@@ -114,29 +114,30 @@ class SelectionMenu extends SelectionMenuService {
                   right: right,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: SelectionMenuWidget(
-                      selectionMenuStyle: style,
-                      singleColumn: singleColumn,
-                      items: selectionMenuItems
-                        ..forEach((element) {
-                          element.deleteSlash = deleteSlashByDefault;
-                          element.deleteKeywords = deleteKeywordsByDefault;
-                          element.onSelected = () {
+                    child: customWidget ??
+                        SelectionMenuWidget(
+                          selectionMenuStyle: style,
+                          singleColumn: singleColumn,
+                          items: selectionMenuItems
+                            ..forEach((element) {
+                              element.deleteSlash = deleteSlashByDefault;
+                              element.deleteKeywords = deleteKeywordsByDefault;
+                              element.onSelected = () {
+                                dismiss();
+                              };
+                            }),
+                          maxItemInRow: 5,
+                          editorState: editorState,
+                          itemCountFilter: itemCountFilter,
+                          menuService: this,
+                          onExit: () {
                             dismiss();
-                          };
-                        }),
-                      maxItemInRow: 5,
-                      editorState: editorState,
-                      itemCountFilter: itemCountFilter,
-                      menuService: this,
-                      onExit: () {
-                        dismiss();
-                      },
-                      onSelectionUpdate: () {
-                        _selectionUpdateByInner = true;
-                      },
-                      deleteSlashByDefault: deleteSlashByDefault,
-                    ),
+                          },
+                          onSelectionUpdate: () {
+                            _selectionUpdateByInner = true;
+                          },
+                          deleteSlashByDefault: deleteSlashByDefault,
+                        ),
                   ),
                 ),
               ],
@@ -165,8 +166,7 @@ class SelectionMenu extends SelectionMenuService {
 
   void _onSelectionChange() {
     // workaround: SelectionService has been released after hot reload.
-    final isSelectionDisposed =
-        editorState.service.selectionServiceKey.currentState == null;
+    final isSelectionDisposed = editorState.service.selectionServiceKey.currentState == null;
     if (!isSelectionDisposed) {
       final selectionService = editorState.service.selectionService;
       if (selectionService.currentSelection.value == null) {
@@ -212,8 +212,7 @@ class SelectionMenu extends SelectionMenuService {
     // but the coordinates of overlay are not properly converted currently.
     // Just subtract the padding here as a result.
     const menuOffset = Offset(0, 10);
-    final editorOffset =
-        editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final editorOffset = editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
     final editorHeight = editorState.renderBox!.size.height;
     final editorWidth = editorState.renderBox!.size.width;
 
@@ -246,9 +245,7 @@ class SelectionMenu extends SelectionMenuService {
       );
     } else if (offset.dx - editorOffset.dx > menuWidth) {
       // show on left
-      _alignment = _alignment == Alignment.topLeft
-          ? Alignment.topRight
-          : Alignment.bottomRight;
+      _alignment = _alignment == Alignment.topLeft ? Alignment.topRight : Alignment.bottomRight;
 
       _offset = Offset(
         editorWidth - _offset.dx + editorOffset.dx,
