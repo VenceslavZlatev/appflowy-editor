@@ -30,8 +30,7 @@ class KeyboardServiceWidget extends StatefulWidget {
 }
 
 @visibleForTesting
-class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
-    implements AppFlowyKeyboardService {
+class KeyboardServiceWidgetState extends State<KeyboardServiceWidget> implements AppFlowyKeyboardService {
   late final SelectionGestureInterceptor interceptor;
   late final EditorState editorState;
   late final TextInputService textInputService;
@@ -64,8 +63,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
         return true;
       },
     );
-    editorState.service.selectionService
-        .registerGestureInterceptor(interceptor);
+    editorState.service.selectionService.registerGestureInterceptor(interceptor);
 
     textInputService = buildTextInputService();
 
@@ -142,8 +140,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
     if (kIsWeb) {
       child = Shortcuts(
         shortcuts: {
-          LogicalKeySet(LogicalKeyboardKey.space):
-              const DoNothingAndStopPropagationIntent(),
+          LogicalKeySet(LogicalKeyboardKey.space): const DoNothingAndStopPropagationIntent(),
         },
         child: child,
       );
@@ -168,8 +165,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
       return KeyEventResult.ignored;
     }
 
-    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
-        !enableIMEShortcuts) {
+    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) || !enableIMEShortcuts) {
       if (textInputService.composingTextRange != TextRange.empty) {
         return KeyEventResult.skipRemainingHandlers;
       }
@@ -199,8 +195,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
   }
 
   void _onSelectionChanged() {
-    final doNotAttach = editorState
-        .selectionExtraInfo?[selectionExtraInfoDoNotAttachTextService];
+    final doNotAttach = editorState.selectionExtraInfo?[selectionExtraInfoDoNotAttachTextService];
     if (doNotAttach == true) {
       return;
     }
@@ -245,8 +240,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
           textCapitalization: TextCapitalization.sentences,
           inputAction: TextInputAction.newline,
           keyboardAppearance: Theme.of(context).brightness,
-          allowedMimeTypes:
-              widget.contentInsertionConfiguration?.allowedMimeTypes ?? [],
+          allowedMimeTypes: widget.contentInsertionConfiguration?.allowedMimeTypes ?? [],
         ),
       );
       // disable shortcuts when the IME active
@@ -260,23 +254,19 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
   // based on the given selection.
   TextEditingValue? _getCurrentTextEditingValue(Selection selection) {
     // Get all the editable nodes in the selection.
-    final editableNodes = editorState
-        .getNodesInSelection(selection)
-        .where((element) => element.delta != null);
+    final editableNodes = editorState.getNodesInSelection(selection).where((element) => element.delta != null);
 
     // if the selection is inline and the selection is updated by ui event,
     // we should clear the composing range on Android.
-    final shouldClearComposingRange =
-        editorState.selectionType == SelectionType.inline &&
-            editorState.selectionUpdateReason == SelectionUpdateReason.uiEvent;
+    final shouldClearComposingRange = editorState.selectionType == SelectionType.inline &&
+        editorState.selectionUpdateReason == SelectionUpdateReason.uiEvent;
 
     if (PlatformExtension.isAndroid && shouldClearComposingRange) {
       textInputService.clearComposingTextRange();
     }
 
     // Get the composing text range.
-    final composingTextRange =
-        textInputService.composingTextRange ?? TextRange.empty;
+    final composingTextRange = textInputService.composingTextRange ?? TextRange.empty;
     if (editableNodes.isNotEmpty) {
       // Get the text by concatenating all the editable nodes in the selection.
       var text = editableNodes.fold<String>(
@@ -315,8 +305,7 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
         return;
       }
 
-      final children =
-          WidgetsBinding.instance.focusManager.primaryFocus?.children;
+      final children = WidgetsBinding.instance.focusManager.primaryFocus?.children;
       if (children != null && !children.contains(focusNode)) {
         editorState.selection = null;
       }

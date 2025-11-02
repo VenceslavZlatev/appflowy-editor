@@ -10,8 +10,7 @@ void showActionMenu(
   int position,
   TableDirection dir,
 ) {
-  final Offset pos =
-      (context.findRenderObject() as RenderBox).localToGlobal(Offset.zero);
+  final Offset pos = (context.findRenderObject() as RenderBox).localToGlobal(Offset.zero);
   final rect = Rect.fromLTWH(
     pos.dx,
     pos.dy,
@@ -43,9 +42,7 @@ void showActionMenu(
               dir == TableDirection.col
                   ? AppFlowyEditorL10n.current.colAddBefore
                   : AppFlowyEditorL10n.current.rowAddBefore,
-              dir == TableDirection.col
-                  ? Icons.first_page
-                  : Icons.vertical_align_top, () {
+              dir == TableDirection.col ? Icons.first_page : Icons.vertical_align_top, () {
             TableActions.add(node, position, editorState, dir);
             dismissOverlay();
           }),
@@ -54,17 +51,13 @@ void showActionMenu(
               dir == TableDirection.col
                   ? AppFlowyEditorL10n.current.colAddAfter
                   : AppFlowyEditorL10n.current.rowAddAfter,
-              dir == TableDirection.col
-                  ? Icons.last_page
-                  : Icons.vertical_align_bottom, () {
+              dir == TableDirection.col ? Icons.last_page : Icons.vertical_align_bottom, () {
             TableActions.add(node, position + 1, editorState, dir);
             dismissOverlay();
           }),
           _menuItem(
               context,
-              dir == TableDirection.col
-                  ? AppFlowyEditorL10n.current.colRemove
-                  : AppFlowyEditorL10n.current.rowRemove,
+              dir == TableDirection.col ? AppFlowyEditorL10n.current.colRemove : AppFlowyEditorL10n.current.rowRemove,
               Icons.delete, () {
             TableActions.delete(node, position, editorState, dir);
             dismissOverlay();
@@ -83,9 +76,7 @@ void showActionMenu(
             AppFlowyEditorL10n.current.backgroundColor,
             Icons.format_color_fill,
             () {
-              final cell = dir == TableDirection.col
-                  ? getCellNode(node, position, 0)
-                  : getCellNode(node, 0, position);
+              final cell = dir == TableDirection.col ? getCellNode(node, position, 0) : getCellNode(node, 0, position);
               final key = dir == TableDirection.col
                   ? TableCellBlockKeys.colBackgroundColor
                   : TableCellBlockKeys.rowBackgroundColor;
@@ -111,9 +102,7 @@ void showActionMenu(
           ),
           _menuItem(
               context,
-              dir == TableDirection.col
-                  ? AppFlowyEditorL10n.current.colClear
-                  : AppFlowyEditorL10n.current.rowClear,
+              dir == TableDirection.col ? AppFlowyEditorL10n.current.colClear : AppFlowyEditorL10n.current.rowClear,
               Icons.clear, () {
             TableActions.clear(node, position, editorState, dir);
             dismissOverlay();

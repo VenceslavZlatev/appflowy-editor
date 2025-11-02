@@ -13,6 +13,7 @@ class TableDragAddArea extends StatefulWidget {
     required this.height,
     required this.borderColor,
     required this.borderHoverColor,
+    this.scrollController,
   });
 
   final Node tableNode;
@@ -22,6 +23,7 @@ class TableDragAddArea extends StatefulWidget {
   final double height;
   final Color borderColor;
   final Color borderHoverColor;
+  final ScrollController? scrollController;
 
   @override
   State<TableDragAddArea> createState() => _TableDragAddAreaState();
@@ -175,6 +177,11 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
           widget.direction,
         );
       }
+
+      // Auto-scroll to the right when adding columns
+      if (widget.direction == TableDirection.col && widget.scrollController != null) {
+        _scrollToNewColumn();
+      }
     } else if (newCount < currentCount) {
       // Check if any cells in the rows/columns to be deleted contain data
       if (_hasDataInRange(newCount, currentCount)) {
@@ -236,5 +243,42 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
       }
     }
     return false;
+  }
+
+  /// Scroll to keep the newly added column in view
+  void _scrollToNewColumn() {
+    if (widget.scrollController == null) return;
+
+    // Use addPostFrameCallback to ensure the table has been rebuilt
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!widget.scrollController!.hasClients) return;
+
+      final scrollPosition = widget.scrollController!.position;
+      final viewportWidth = scrollPosition.viewportDimension;
+      final maxScrollExtent = scrollPosition.maxScrollExtent;
+
+      // Only scroll if there's scroll space available
+      if (maxScrollExtent > 0) {
+        // Calculate how much of the table is currently visible from the right
+        final currentRightPosition = scrollPosition.pixels + viewportWidth;
+        final tableWidth = _calculateTableWidth();
+
+        // If the right edge of the table is not visible, scroll to show it
+        if (currentRightPosition < tableWidth) {
+          widget.scrollController!.animateTo(
+            maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
+  }
+
+  /// Calculate the current table width
+  double _calculateTableWidth() {
+    // Use the table node's built-in width calculation
+    final tableNode = TableNode(node: widget.tableNode);
+    return tableNode.tableWidth;
   }
 }

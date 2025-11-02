@@ -13,12 +13,14 @@ class TableView extends StatefulWidget {
     required this.tableNode,
     required this.tableStyle,
     this.menuBuilder,
+    this.scrollController,
   });
 
   final EditorState editorState;
   final TableNode tableNode;
   final TableBlockComponentMenuBuilder? menuBuilder;
   final TableStyle tableStyle;
+  final ScrollController? scrollController;
 
   @override
   State<TableView> createState() => _TableViewState();
@@ -69,6 +71,7 @@ class _TableViewState extends State<TableView> {
                           height: widget.tableNode.colsHeight,
                           borderColor: widget.tableStyle.borderColor,
                           borderHoverColor: widget.tableStyle.borderHoverColor,
+                          scrollController: widget.scrollController,
                         ),
                       ),
                     ],

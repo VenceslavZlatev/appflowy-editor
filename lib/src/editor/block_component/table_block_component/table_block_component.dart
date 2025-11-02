@@ -222,6 +222,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
           editorState: editorState,
           menuBuilder: widget.menuBuilder,
           tableStyle: widget.tableStyle,
+          scrollController: _scrollController,
         ),
       ),
     );
