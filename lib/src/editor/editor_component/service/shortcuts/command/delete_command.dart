@@ -47,12 +47,10 @@ CommandShortcutEventHandler _deleteInCollapsedSelection = (editorState) {
   final transaction = editorState.transaction;
 
   if (position.offset == delta.length) {
-    Node? tableParent =
-        node.findParent((element) => element.type == TableBlockKeys.type);
+    Node? tableParent = node.findParent((element) => element.type == TableBlockKeys.type);
     Node? nextTableParent;
     final next = node.findDownward((element) {
-      nextTableParent =
-          element.findParent((element) => element.type == TableBlockKeys.type);
+      nextTableParent = element.findParent((element) => element.type == TableBlockKeys.type);
       // break if only one is in a table or they're in different tables
       return tableParent != nextTableParent ||
           // merge the next node with delta
@@ -105,11 +103,57 @@ CommandShortcutEventHandler _deleteInBlockSelection = (editorState) {
   if (selection == null || editorState.selectionType != SelectionType.block) {
     return KeyEventResult.ignored;
   }
+
+  final node = editorState.getNodeAtPath(selection.start.path);
+  if (node == null) {
+    return KeyEventResult.ignored;
+  }
+
   final transaction = editorState.transaction;
-  transaction.deleteNodesAtPath(selection.start.path);
-  editorState
-      .apply(transaction)
-      .then((value) => editorState.selectionType = null);
+
+  // Check if this node is inside a column
+  final columnParent = node.findParent((element) => element.type == ColumnBlockKeys.type);
+
+  // Check if this is the only child in a column
+  final isOnlyChildInColumn =
+      columnParent != null && columnParent.children.length == 1 && columnParent.children.first.id == node.id;
+
+  if (isOnlyChildInColumn) {
+    // If this is the only child in a column, replace it with an empty paragraph
+    // instead of deleting it (to avoid empty column placeholders)
+    final nodePath = node.path;
+    transaction.deleteNode(node);
+    transaction.insertNode(nodePath, paragraphNode());
+    transaction.afterSelection = Selection.collapsed(
+      Position(path: nodePath, offset: 0),
+    );
+  } else {
+    // Normal deletion
+    transaction.deleteNodesAtPath(selection.start.path);
+
+    // Find a good place to put the cursor
+    final prev = node.previous;
+    final next = node.next;
+
+    if (next != null && next.delta != null) {
+      // Place cursor at start of next node
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: next.path, offset: 0),
+      );
+    } else if (prev != null && prev.delta != null) {
+      // Place cursor at end of previous node
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: prev.path, offset: prev.delta!.length),
+      );
+    } else if (node.parent != null) {
+      // Place cursor at parent's position
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: node.parent!.path),
+      );
+    }
+  }
+
+  editorState.apply(transaction).then((value) => editorState.selectionType = null);
 
   return KeyEventResult.handled;
 };
