@@ -92,15 +92,15 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
         return KeyEventResult.handled;
       }
 
-      // Handle deletion in column blocks: if paragraph is empty at position 0, delete the column
+      // Handle deletion in column blocks: if paragraph is empty at position 0
       final columnParent = node.findParent((element) => element.type == ColumnBlockKeys.type);
       final columnsParent = node.findParent((element) => element.type == ColumnsBlockKeys.type);
-      if ((columnParent != null || columnsParent != null) &&
-          position.offset == 0 &&
-          node.delta != null &&
-          node.delta!.isEmpty) {
-        // Delete the column block if we're at position 0 with empty text
-        if (columnParent != null) {
+      if (columnParent != null && position.offset == 0 && node.delta != null && node.delta!.isEmpty) {
+        // Check if this is the first child in the column
+        final isFirstChildInColumn = columnParent.children.isNotEmpty && columnParent.children.first.id == node.id;
+
+        if (isFirstChildInColumn) {
+          // If this is the first child in the column, delete the entire column
           final columnBlock = columnParent;
           final columnsBlock = columnsParent ?? columnBlock.parent;
 
@@ -115,26 +115,51 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
             transaction.afterSelection = Selection.collapsed(Position(path: nextPath));
           } else {
             // Multiple columns, delete just this column
-            final columnPath = columnBlock.path;
-            final columnIndex = columnPath.last;
-            // Find the first text node in the remaining columns to place cursor
-            Node? nextTextNode;
+            // Find the previous column (before the deleted one) to place cursor at the end
+            Node? targetTextNode;
+            bool placeAtEnd = true; // Track if we should place cursor at end (previous column) or start (next column)
             if (columnsBlock != null && columnsBlock.children.length > 1) {
-              // Find first non-deleted column
-              for (final col in columnsBlock.children) {
-                if (col.path.last != columnIndex) {
-                  final firstChild = col.children.firstOrNull;
+              // Find the index of the column being deleted
+              int? deletedColumnIndex;
+              for (int i = 0; i < columnsBlock.children.length; i++) {
+                if (columnsBlock.children[i].id == columnBlock.id) {
+                  deletedColumnIndex = i;
+                  break;
+                }
+              }
+              if (deletedColumnIndex != null && deletedColumnIndex > 0) {
+                // Get the previous column (before the one being deleted)
+                final previousColumn = columnsBlock.children[deletedColumnIndex - 1];
+                // Find the last text node in the previous column
+                if (previousColumn.children.isNotEmpty) {
+                  for (var child in previousColumn.children.reversed) {
+                    if (child.delta != null) {
+                      targetTextNode = child;
+                      placeAtEnd = true; // Place at end of previous column
+                      break;
+                    }
+                  }
+                }
+              } else {
+                // If deleting the first column, find the next column and place cursor at start
+                if (deletedColumnIndex != null && deletedColumnIndex < columnsBlock.children.length - 1) {
+                  final nextColumn = columnsBlock.children[deletedColumnIndex + 1];
+                  final firstChild = nextColumn.children.firstOrNull;
                   if (firstChild?.delta != null) {
-                    nextTextNode = firstChild;
-                    break;
+                    targetTextNode = firstChild;
+                    placeAtEnd = false; // Place at start of next column
                   }
                 }
               }
             }
             transaction.deleteNode(columnBlock);
-            if (nextTextNode != null) {
+            if (targetTextNode != null && targetTextNode.delta != null) {
+              // Place cursor at the end of previous column or start of next column
               transaction.afterSelection = Selection.collapsed(
-                Position(path: nextTextNode.path, offset: 0),
+                Position(
+                  path: targetTextNode.path,
+                  offset: placeAtEnd ? targetTextNode.delta!.length : 0,
+                ),
               );
             } else {
               // Fallback: place cursor after columns block or insert paragraph
@@ -146,6 +171,67 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
           }
           editorState.apply(transaction);
           return KeyEventResult.handled;
+        } else {
+          // This is not the first child, so just delete this empty paragraph
+          // Check if this is the only child in the column
+          final isOnlyChildInColumn = columnParent.children.length == 1 && columnParent.children.first.id == node.id;
+
+          if (isOnlyChildInColumn) {
+            // If this is the only child in a column, replace it with an empty paragraph
+            // instead of deleting it (to avoid empty column placeholders)
+            final nodePath = node.path;
+            transaction.deleteNode(node);
+            transaction.insertNode(nodePath, paragraphNode());
+            transaction.afterSelection = Selection.collapsed(
+              Position(path: nodePath, offset: 0),
+            );
+            editorState.apply(transaction);
+            return KeyEventResult.handled;
+          } else {
+            // There are other siblings in the column, try to merge with previous sibling
+            // or just delete this empty paragraph
+            final prev = node.previous;
+            if (prev != null && prev.delta != null) {
+              // Merge with previous sibling in the same column
+              final prevColumnParent = prev.findParent((element) => element.type == ColumnBlockKeys.type);
+              if (prevColumnParent?.id == columnParent.id) {
+                // Same column, merge with previous
+                transaction
+                  ..mergeText(prev, node)
+                  ..insertNodes(
+                    prev.path.next,
+                    node.children.toList(),
+                  )
+                  ..deleteNode(node);
+                transaction.afterSelection = Selection.collapsed(
+                  Position(path: prev.path, offset: prev.delta!.length),
+                );
+                editorState.apply(transaction);
+                return KeyEventResult.handled;
+              }
+            }
+            // No previous sibling to merge with, just delete this empty paragraph
+            final next = node.next;
+            transaction.deleteNode(node);
+            if (next != null && next.delta != null) {
+              transaction.afterSelection = Selection.collapsed(
+                Position(path: next.path, offset: 0),
+              );
+            } else if (prev != null && prev.delta != null) {
+              transaction.afterSelection = Selection.collapsed(
+                Position(path: prev.path, offset: prev.delta!.length),
+              );
+            } else {
+              // Insert an empty paragraph at the same position
+              final nodePath = node.path;
+              transaction.insertNode(nodePath, paragraphNode());
+              transaction.afterSelection = Selection.collapsed(
+                Position(path: nodePath, offset: 0),
+              );
+            }
+            editorState.apply(transaction);
+            return KeyEventResult.handled;
+          }
         }
       }
 
