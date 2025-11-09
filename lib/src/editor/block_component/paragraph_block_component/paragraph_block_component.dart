@@ -23,11 +23,9 @@ Node paragraphNode({
   return Node(
     type: ParagraphBlockKeys.type,
     attributes: {
-      ParagraphBlockKeys.delta:
-          (delta ?? (Delta()..insert(text ?? ''))).toJson(),
+      ParagraphBlockKeys.delta: (delta ?? (Delta()..insert(text ?? ''))).toJson(),
       if (attributes != null) ...attributes,
-      if (textDirection != null)
-        ParagraphBlockKeys.textDirection: textDirection,
+      if (textDirection != null) ParagraphBlockKeys.textDirection: textDirection,
     },
     children: children,
   );
@@ -81,12 +79,10 @@ class ParagraphBlockComponentWidget extends BlockComponentStatefulWidget {
   final ShowPlaceholder? showPlaceholder;
 
   @override
-  State<ParagraphBlockComponentWidget> createState() =>
-      _ParagraphBlockComponentWidgetState();
+  State<ParagraphBlockComponentWidget> createState() => _ParagraphBlockComponentWidgetState();
 }
 
-class _ParagraphBlockComponentWidgetState
-    extends State<ParagraphBlockComponentWidget>
+class _ParagraphBlockComponentWidgetState extends State<ParagraphBlockComponentWidget>
     with
         SelectableMixin,
         DefaultSelectableMixin,
@@ -118,25 +114,37 @@ class _ParagraphBlockComponentWidgetState
   void initState() {
     super.initState();
     editorState.selectionNotifier.addListener(_onSelectionChange);
+    node.addListener(_onNodeChange);
     _onSelectionChange();
   }
 
   @override
   void dispose() {
     editorState.selectionNotifier.removeListener(_onSelectionChange);
+    node.removeListener(_onNodeChange);
     super.dispose();
   }
 
   void _onSelectionChange() {
+    _updatePlaceholder();
+  }
+
+  void _onNodeChange() {
+    _updatePlaceholder();
+  }
+
+  void _updatePlaceholder() {
     final selection = editorState.selection;
 
     if (widget.showPlaceholder != null) {
-      setState(() {
-        _showPlaceholder = widget.showPlaceholder!(editorState, node);
-      });
+      final shouldShow = widget.showPlaceholder!(editorState, node);
+      if (shouldShow != _showPlaceholder) {
+        setState(() {
+          _showPlaceholder = shouldShow;
+        });
+      }
     } else {
-      final showPlaceholder = selection != null &&
-          (selection.isSingle && selection.start.path.equals(node.path));
+      final showPlaceholder = selection != null && (selection.isSingle && selection.start.path.equals(node.path));
       if (showPlaceholder != _showPlaceholder) {
         setState(() => _showPlaceholder = showPlaceholder);
       }
@@ -151,6 +159,14 @@ class _ParagraphBlockComponentWidgetState
     final textDirection = calculateTextDirection(
       layoutDirection: Directionality.maybeOf(context),
     );
+
+    // Only pass placeholder text when the block is actually empty
+    // This prevents the placeholder widget from affecting layout when there's content
+    // When the block has content, pass empty string to avoid rendering placeholder widget
+    final delta = widget.node.delta;
+    final isEmpty = delta == null || delta.isEmpty;
+    final shouldShowPlaceholder = _showPlaceholder && isEmpty;
+    final placeholderTextToUse = shouldShowPlaceholder ? placeholderText : '';
 
     Widget child = Container(
       width: double.infinity,
@@ -167,14 +183,13 @@ class _ParagraphBlockComponentWidgetState
             node: widget.node,
             editorState: editorState,
             textAlign: alignment?.toTextAlign ?? textAlign,
-            placeholderText: _showPlaceholder ? placeholderText : ' ',
+            placeholderText: placeholderTextToUse,
             textSpanDecorator: (textSpan) => textSpan.updateTextStyle(
               textStyleWithTextSpan(
                 textSpan: textSpan,
               ),
             ),
-            placeholderTextSpanDecorator: (textSpan) =>
-                textSpan.updateTextStyle(
+            placeholderTextSpanDecorator: (textSpan) => textSpan.updateTextStyle(
               placeholderTextStyleWithTextSpan(textSpan: textSpan),
             ),
             textDirection: textDirection,
