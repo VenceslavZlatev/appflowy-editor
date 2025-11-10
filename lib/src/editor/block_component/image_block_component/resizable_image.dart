@@ -51,6 +51,16 @@ class _ResizableImageState extends State<ResizableImage> {
   }
 
   @override
+  void didUpdateWidget(ResizableImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync internal imageWidth with widget.width when it changes externally
+    // This is important when resizing from a smaller saved size back to larger
+    if (oldWidget.width != widget.width) {
+      imageWidth = widget.width;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Align(
       alignment: widget.alignment,
@@ -75,31 +85,46 @@ class _ResizableImageState extends State<ResizableImage> {
     final src = widget.src;
     if (isBase64(src)) {
       // load base64 image (url is raw base64 from web)
+      // Cache base64 images since they're in-memory data
       _cacheImage ??= Image.memory(
         dataFromBase64String(src),
       );
       child = _cacheImage!;
     } else if (isURL(src)) {
       // load network image
-      _cacheImage ??= Image.network(
+      // Use current visual width (imageWidth - moveDistance) instead of widget.width
+      // This ensures the image scales properly during drag, especially when resizing up
+      final currentVisualWidth = max(_kImageBlockComponentMinWidth, imageWidth - moveDistance);
+
+      // Don't cache the Image widget - Flutter's image cache handles the actual image data
+      // Recreate the widget when width changes during drag for visual feedback
+      // Flutter's NetworkImage cache will handle the actual image bytes
+      child = Image.network(
         widget.src,
-        width: widget.width,
+        width: currentVisualWidth,
         gaplessPlayback: true,
         loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null ||
-              loadingProgress.cumulativeBytesLoaded ==
-                  loadingProgress.expectedTotalBytes) {
+          if (loadingProgress == null || loadingProgress.cumulativeBytesLoaded == loadingProgress.expectedTotalBytes) {
             return child;
           }
           return _buildLoading(context);
         },
         errorBuilder: (context, error, stackTrace) => _buildError(context),
       );
-      child = _cacheImage!;
     } else {
       // load local file
-      _cacheImage ??= Image.file(File(src));
-      child = _cacheImage!;
+      final file = File(src);
+      if (file.existsSync()) {
+        // Cache file images since file I/O is involved
+        _cacheImage ??= Image.file(
+          file,
+          errorBuilder: (context, error, stackTrace) => _buildError(context),
+        );
+        child = _cacheImage!;
+      } else {
+        // File doesn't exist, show error
+        child = _buildError(context);
+      }
     }
     return Stack(
       children: [
@@ -196,8 +221,7 @@ class _ResizableImageState extends State<ResizableImage> {
           }
         },
         onHorizontalDragEnd: (details) {
-          imageWidth =
-              max(_kImageBlockComponentMinWidth, imageWidth - moveDistance);
+          imageWidth = max(_kImageBlockComponentMinWidth, imageWidth - moveDistance);
           initialOffset = 0;
           moveDistance = 0;
 

@@ -104,15 +104,72 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
           final columnBlock = columnParent;
           final columnsBlock = columnsParent ?? columnBlock.parent;
 
-          // If columns block has only one column, delete the entire columns block
+          // If columns block will have only one column after deletion, extract blocks from remaining column
           // Otherwise, just delete the column
-          if (columnsBlock != null && columnsBlock.children.length == 1) {
-            // Only one column left, delete the entire columns block
-            final nextPath = columnsBlock.path.next;
+          if (columnsBlock != null && columnsBlock.children.length == 2) {
+            // After deletion, only one column will remain - extract all blocks from the remaining column
+            // Find which column will remain (the one that's not being deleted)
+            final remainingColumn = columnsBlock.children.firstWhere(
+              (col) => col.id != columnBlock.id,
+              orElse: () => columnsBlock.children.first,
+            );
+            final blocksToExtract = remainingColumn.children.map((e) => e.deepCopy()).toList();
+
+            // Get the path where we'll insert the extracted blocks
+            final columnsPath = columnsBlock.path;
+
+            // Insert all extracted blocks BEFORE deleting to preserve position
+            // Blocks should be inserted at the same level as the columns block was
+            if (blocksToExtract.isNotEmpty) {
+              // Insert first block at the same path as columns block (before deletion)
+              transaction.insertNode(columnsPath, blocksToExtract[0]);
+              // Insert subsequent blocks after the first one
+              var currentPath = columnsPath;
+              for (int i = 1; i < blocksToExtract.length; i++) {
+                currentPath = currentPath.next;
+                transaction.insertNode(currentPath, blocksToExtract[i]);
+              }
+              // Set selection to the first extracted block
+              transaction.afterSelection = Selection.collapsed(
+                Position(path: columnsPath, offset: 0),
+              );
+            } else {
+              // If no blocks to extract, insert an empty paragraph
+              transaction.insertNode(columnsPath, paragraphNode());
+              transaction.afterSelection = Selection.collapsed(Position(path: columnsPath));
+            }
+
+            // Delete the column being deleted
+            transaction.deleteNode(columnBlock);
+
+            // Delete the columns block (after inserting blocks to preserve position)
             transaction.deleteNode(columnsBlock);
-            // Insert an empty paragraph at the columns position
-            transaction.insertNode(nextPath, paragraphNode());
-            transaction.afterSelection = Selection.collapsed(Position(path: nextPath));
+          } else if (columnsBlock != null && columnsBlock.children.length == 1) {
+            // Only one column exists (shouldn't happen in normal flow, but handle it)
+            final remainingColumn = columnsBlock.children.first;
+            final blocksToExtract = remainingColumn.children.map((e) => e.deepCopy()).toList();
+            final columnsPath = columnsBlock.path;
+
+            // Insert all extracted blocks BEFORE deleting to preserve position
+            if (blocksToExtract.isNotEmpty) {
+              // Insert first block at the same path as columns block (before deletion)
+              transaction.insertNode(columnsPath, blocksToExtract[0]);
+              // Insert subsequent blocks after the first one
+              var currentPath = columnsPath;
+              for (int i = 1; i < blocksToExtract.length; i++) {
+                currentPath = currentPath.next;
+                transaction.insertNode(currentPath, blocksToExtract[i]);
+              }
+              transaction.afterSelection = Selection.collapsed(
+                Position(path: columnsPath, offset: 0),
+              );
+            } else {
+              transaction.insertNode(columnsPath, paragraphNode());
+              transaction.afterSelection = Selection.collapsed(Position(path: columnsPath));
+            }
+
+            // Delete the columns block (after inserting blocks to preserve position)
+            transaction.deleteNode(columnsBlock);
           } else {
             // Multiple columns, delete just this column
             // Find the previous column (before the deleted one) to place cursor at the end

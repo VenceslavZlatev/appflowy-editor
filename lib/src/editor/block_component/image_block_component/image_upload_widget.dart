@@ -210,8 +210,7 @@ class _UploadImageMenuState extends State<UploadImageMenu> {
       cursorColor: widget.urlInputBorderColor,
       decoration: InputDecoration(
         hintText: 'URL',
-        hintStyle:
-            TextStyle(fontSize: 14.0, color: widget.uploadButtonTextColor),
+        hintStyle: TextStyle(fontSize: 14.0, color: widget.uploadButtonTextColor),
         contentPadding: const EdgeInsets.all(16.0),
         isDense: true,
         focusedBorder: OutlineInputBorder(
@@ -363,10 +362,7 @@ class _UploadImageMenuState extends State<UploadImageMenu> {
                             dataFromBase64String(_imagePathOrContent!),
                             fit: BoxFit.cover,
                           )
-                        : Image.file(
-                            File(_imagePathOrContent!),
-                            fit: BoxFit.cover,
-                          ),
+                        : _buildLocalImage(_imagePathOrContent!),
                   )
                 : Center(
                     child: Column(
@@ -398,6 +394,43 @@ class _UploadImageMenuState extends State<UploadImageMenu> {
   bool _validateUrl(String url) {
     return url.isNotEmpty && isURL(url);
   }
+
+  Widget _buildLocalImage(String imagePath) {
+    final file = File(imagePath);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          // File exists but can't be loaded (e.g., corrupted)
+          return Container(
+            height: 60,
+            alignment: Alignment.center,
+            child: Text(
+              AppFlowyEditorL10n.current.imageLoadFailed,
+              style: TextStyle(
+                fontSize: 12.0,
+                color: widget.uploadButtonTextColor,
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      // File doesn't exist
+      return Container(
+        height: 60,
+        alignment: Alignment.center,
+        child: Text(
+          AppFlowyEditorL10n.current.imageLoadFailed,
+          style: TextStyle(
+            fontSize: 12.0,
+            color: widget.uploadButtonTextColor,
+          ),
+        ),
+      );
+    }
+  }
 }
 
 extension InsertImage on EditorState {
@@ -414,8 +447,7 @@ extension InsertImage on EditorState {
     }
     final transaction = this.transaction;
     // if the current node is empty paragraph, replace it with image node
-    if (node.type == ParagraphBlockKeys.type &&
-        (node.delta?.isEmpty ?? false)) {
+    if (node.type == ParagraphBlockKeys.type && (node.delta?.isEmpty ?? false)) {
       transaction
         ..insertNode(
           node.path,
