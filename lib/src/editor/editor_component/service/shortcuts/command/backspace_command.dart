@@ -92,6 +92,12 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
         return KeyEventResult.handled;
       }
 
+      // Prevent backspace from navigating out of image captions at position 0
+      // Similar to how table cells work
+      if (node.parent?.type == ImageBlockKeys.type && position.offset == 0) {
+        return KeyEventResult.handled;
+      }
+
       // Handle deletion in column blocks: if paragraph is empty at position 0
       final columnParent = node.findParent((element) => element.type == ColumnBlockKeys.type);
       final columnsParent = node.findParent((element) => element.type == ColumnsBlockKeys.type);
