@@ -61,6 +61,8 @@ class _DesktopSelectionServiceWidgetState
     listen: false,
   );
 
+  _ContextMenuKeyboardInterceptor? _keyboardInterceptor;
+
   @override
   void initState() {
     super.initState();
@@ -157,9 +159,34 @@ class _DesktopSelectionServiceWidgetState
   }
 
   void _clearContextMenu() {
+    if (_contextMenuAreas.isEmpty) {
+      return;
+    }
+
     _contextMenuAreas
       ..forEach((overlay) => overlay.remove())
       ..clear();
+
+    if (_keyboardInterceptor != null) {
+      editorState.service.keyboardService
+          ?.unregisterInterceptor(_keyboardInterceptor!);
+      _keyboardInterceptor = null;
+    }
+
+    editorState.service.keyboardService?.enableShortcuts();
+    editorState.service.keyboardService?.enable();
+
+    final selection = editorState.selectionNotifier.value;
+    if (selection != null) {
+      editorState.updateSelectionWithReason(
+        null,
+        reason: SelectionUpdateReason.uiEvent,
+      );
+      editorState.updateSelectionWithReason(
+        selection,
+        reason: SelectionUpdateReason.uiEvent,
+      );
+    }
   }
 
   @override
@@ -286,15 +313,47 @@ class _DesktopSelectionServiceWidgetState
   }
 
   void _onSecondaryTapDown(TapDownDetails details) {
-    // if selection is null, or
-    // selection.isCollapsed and the selected node is TextNode.
-    // try to select the word.
+    final offset = details.globalPosition;
     final selection = editorState.selectionNotifier.value;
-    if (selection == null ||
-        (selection.isCollapsed == true &&
-            currentSelectedNodes.first.delta != null)) {
-      _onDoubleTapDown(details);
+    final node = getNodeInOffset(offset);
+    final selectable = node?.selectable;
+
+    if (selectable == null) {
+      clearSelection();
+      return;
     }
+
+    final position = selectable.getPositionInOffset(offset);
+    final Selection? newSelection;
+
+    // cases
+    // 1. if the selection is null, then select the current position as a collapsed selection
+    // 2. if the selection is collapsed, then keep it without changes
+    // 3. if the selection is not collapsed, then check if tap is within a selected node
+    // 4. if tap is within the selected nodes, then keep current selection
+    // 5. if tap is outside the selected nodes, then create a collapsed selection at tap point
+
+    if (selection == null) {
+      newSelection = Selection.collapsed(position);
+    } else if (selection.isCollapsed) {
+      newSelection = selection;
+    } else {
+      final selectedNodes = editorState.getNodesInSelection(selection);
+      final isTapInSelectedNode = selectedNodes.any((n) => n == node);
+
+      if (isTapInSelectedNode) {
+        newSelection = selection;
+      } else {
+        newSelection = Selection.collapsed(position);
+      }
+    }
+
+    editorState.updateSelectionWithReason(
+      newSelection,
+      extraInfo: {
+        selectionExtraInfoDisableToolbar: true,
+      },
+    );
 
     _showContextMenu(details);
   }
@@ -436,24 +495,21 @@ class _DesktopSelectionServiceWidgetState
       return;
     }
 
-    final isHitSelectionAreas = currentSelection.value?.isCollapsed == true ||
-        selectionRects.any((element) {
-          const threshold = 20;
-          final scaledArea = Rect.fromCenter(
-            center: element.center,
-            width: element.width + threshold,
-            height: element.height + threshold,
-          );
-          return scaledArea.contains(details.globalPosition);
-        });
-    if (!isHitSelectionAreas) {
-      return;
-    }
-
     // For now, only support the text node.
     if (!currentSelectedNodes.every((element) => element.delta != null)) {
       return;
     }
+
+    final mask = OverlayEntry(
+      builder: (_) => Listener(
+        onPointerDown: (_) => _clearContextMenu(),
+        child: Container(
+          color: Colors.transparent,
+        ),
+      ),
+    );
+    _contextMenuAreas.add(mask);
+    Overlay.of(context, rootOverlay: true).insert(mask);
 
     final baseOffset =
         editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
@@ -471,6 +527,13 @@ class _DesktopSelectionServiceWidgetState
 
     _contextMenuAreas.add(contextMenu);
     Overlay.of(context, rootOverlay: true).insert(contextMenu);
+
+    _keyboardInterceptor = _ContextMenuKeyboardInterceptor();
+    editorState.service.keyboardService
+        ?.registerInterceptor(_keyboardInterceptor!);
+
+    editorState.service.keyboardService?.disableShortcuts();
+    editorState.service.keyboardService?.disable();
   }
 
   @override
@@ -610,5 +673,51 @@ class _DesktopSelectionServiceWidgetState
       dropPath: dropPath,
       cursorNode: node,
     );
+  }
+}
+
+class _ContextMenuKeyboardInterceptor
+    extends AppFlowyKeyboardServiceInterceptor {
+  @override
+  Future<bool> interceptInsert(
+    TextEditingDeltaInsertion insertion,
+    EditorState editorState,
+    List<CharacterShortcutEvent> characterShortcutEvents,
+  ) async {
+    return true;
+  }
+
+  @override
+  Future<bool> interceptDelete(
+    TextEditingDeltaDeletion deletion,
+    EditorState editorState,
+  ) async {
+    return true;
+  }
+
+  @override
+  Future<bool> interceptReplace(
+    TextEditingDeltaReplacement replacement,
+    EditorState editorState,
+    List<CharacterShortcutEvent> characterShortcutEvents,
+  ) async {
+    return true;
+  }
+
+  @override
+  Future<bool> interceptNonTextUpdate(
+    TextEditingDeltaNonTextUpdate nonTextUpdate,
+    EditorState editorState,
+    List<CharacterShortcutEvent> characterShortcutEvents,
+  ) async {
+    return true;
+  }
+
+  @override
+  Future<bool> interceptPerformAction(
+    TextInputAction action,
+    EditorState editorState,
+  ) async {
+    return true;
   }
 }
