@@ -30,6 +30,34 @@ class ImageBlockKeys {
   static const String height = 'height';
 }
 
+class VideoBlockKeys {
+  const VideoBlockKeys._();
+
+  static const String type = 'video';
+
+  /// The align data of a video block.
+  ///
+  /// The value is a String.
+  /// left, center, right
+  static const String align = 'align';
+
+  /// The video src of a video block.
+  ///
+  /// The value is a String.
+  /// It can be a url or a storage path.
+  static const String url = 'url';
+
+  /// The width of a video block.
+  ///
+  /// The value is a double.
+  static const String width = 'width';
+
+  /// The height of a video block.
+  ///
+  /// The value is a double.
+  static const String height = 'height';
+}
+
 Node imageNode({
   required String url,
   String align = 'center',
@@ -87,8 +115,7 @@ class ImageBlockComponentBuilder extends BlockComponentBuilder {
   }
 
   @override
-  BlockComponentValidate get validate =>
-      (node) => node.delta == null && node.children.isEmpty;
+  BlockComponentValidate get validate => (node) => node.delta == null && node.children.isEmpty;
 }
 
 class ImageBlockComponentWidget extends BlockComponentStatefulWidget {
@@ -109,8 +136,7 @@ class ImageBlockComponentWidget extends BlockComponentStatefulWidget {
   final ImageBlockComponentMenuBuilder? menuBuilder;
 
   @override
-  State<ImageBlockComponentWidget> createState() =>
-      ImageBlockComponentWidgetState();
+  State<ImageBlockComponentWidget> createState() => ImageBlockComponentWidgetState();
 }
 
 class ImageBlockComponentWidgetState extends State<ImageBlockComponentWidget>
@@ -139,8 +165,7 @@ class ImageBlockComponentWidgetState extends State<ImageBlockComponentWidget>
     final alignment = AlignmentExtension.fromString(
       attributes[ImageBlockKeys.align] ?? 'center',
     );
-    final width = attributes[ImageBlockKeys.width]?.toDouble() ??
-        MediaQuery.of(context).size.width;
+    final width = attributes[ImageBlockKeys.width]?.toDouble() ?? MediaQuery.of(context).size.width;
     final height = attributes[ImageBlockKeys.height]?.toDouble();
 
     Widget child = ResizableImage(
@@ -271,8 +296,7 @@ class ImageBlockComponentWidgetState extends State<ImageBlockComponentWidget>
     final imageBox = imageKey.currentContext?.findRenderObject();
     if (parentBox is RenderBox && imageBox is RenderBox) {
       return [
-        imageBox.localToGlobal(Offset.zero, ancestor: parentBox) &
-            imageBox.size,
+        imageBox.localToGlobal(Offset.zero, ancestor: parentBox) & imageBox.size,
       ];
     }
     return [Offset.zero & _renderBox!.size];

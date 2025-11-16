@@ -23,12 +23,10 @@ class DesktopSelectionServiceWidget extends StatefulWidget {
   final AppFlowyDropTargetStyle dropTargetStyle;
 
   @override
-  State<DesktopSelectionServiceWidget> createState() =>
-      _DesktopSelectionServiceWidgetState();
+  State<DesktopSelectionServiceWidget> createState() => _DesktopSelectionServiceWidgetState();
 }
 
-class _DesktopSelectionServiceWidgetState
-    extends State<DesktopSelectionServiceWidget>
+class _DesktopSelectionServiceWidgetState extends State<DesktopSelectionServiceWidget>
     with WidgetsBindingObserver
     implements AppFlowySelectionService {
   @override
@@ -77,11 +75,19 @@ class _DesktopSelectionServiceWidgetState
     super.didChangeMetrics();
 
     // Need to refresh the selection when the metrics changed.
-    if (currentSelection.value != null) {
+    // Store the selection value to avoid race condition where it becomes null
+    // between the check and the debounced callback execution
+    final selection = currentSelection.value;
+    if (selection != null) {
       Debounce.debounce(
         'didChangeMetrics - update selection ',
         const Duration(milliseconds: 100),
-        () => updateSelection(currentSelection.value!),
+        () {
+          // Check again in case the selection was cleared during debounce
+          if (currentSelection.value != null) {
+            updateSelection(selection);
+          }
+        },
       );
     }
   }
@@ -168,8 +174,7 @@ class _DesktopSelectionServiceWidgetState
       ..clear();
 
     if (_keyboardInterceptor != null) {
-      editorState.service.keyboardService
-          ?.unregisterInterceptor(_keyboardInterceptor!);
+      editorState.service.keyboardService?.unregisterInterceptor(_keyboardInterceptor!);
       _keyboardInterceptor = null;
     }
 
@@ -372,9 +377,7 @@ class _DesktopSelectionServiceWidgetState
     _panStartOffset = details.globalPosition;
     _panStartScrollDy = editorState.service.scrollService?.dy;
 
-    _panStartPosition = getNodeInOffset(_panStartOffset!)
-        ?.selectable
-        ?.getPositionInOffset(_panStartOffset!);
+    _panStartPosition = getNodeInOffset(_panStartOffset!)?.selectable?.getPositionInOffset(_panStartOffset!);
     if (_panStartPosition == null) {
       _resetPanState();
       return;
@@ -393,9 +396,7 @@ class _DesktopSelectionServiceWidgetState
       return;
     }
 
-    if (!_isDraggingSelection ||
-        _panStartOffset == null ||
-        _panStartPosition == null) {
+    if (!_isDraggingSelection || _panStartOffset == null || _panStartPosition == null) {
       return;
     }
 
@@ -410,8 +411,7 @@ class _DesktopSelectionServiceWidgetState
   }
 
   void _onPanEnd(DragEndDetails details) {
-    final canPanEnd = _interceptors
-        .every((interceptor) => interceptor.canPanEnd?.call(details) ?? true);
+    final canPanEnd = _interceptors.every((interceptor) => interceptor.canPanEnd?.call(details) ?? true);
 
     if (!canPanEnd) {
       return;
@@ -422,9 +422,7 @@ class _DesktopSelectionServiceWidgetState
   }
 
   void _updateSelectionDuringDrag(Offset panEndOffset) {
-    if (!_isDraggingSelection ||
-        _panStartPosition == null ||
-        _panStartOffset == null) {
+    if (!_isDraggingSelection || _panStartPosition == null || _panStartOffset == null) {
       return;
     }
 
@@ -511,8 +509,7 @@ class _DesktopSelectionServiceWidgetState
     _contextMenuAreas.add(mask);
     Overlay.of(context, rootOverlay: true).insert(mask);
 
-    final baseOffset =
-        editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final baseOffset = editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
     final offset = details.localPosition + const Offset(10, 10) + baseOffset;
     final contextMenu = OverlayEntry(
       builder: (_) =>
@@ -529,8 +526,7 @@ class _DesktopSelectionServiceWidgetState
     Overlay.of(context, rootOverlay: true).insert(contextMenu);
 
     _keyboardInterceptor = _ContextMenuKeyboardInterceptor();
-    editorState.service.keyboardService
-        ?.registerInterceptor(_keyboardInterceptor!);
+    editorState.service.keyboardService?.registerInterceptor(_keyboardInterceptor!);
 
     editorState.service.keyboardService?.disableShortcuts();
     editorState.service.keyboardService?.disable();
@@ -599,18 +595,15 @@ class _DesktopSelectionServiceWidgetState
           );
         }
 
-        final overlayRenderBox =
-            Overlay.of(context).context.findRenderObject() as RenderBox;
-        final editorRenderBox =
-            selectable.context.findRenderObject() as RenderBox;
+        final overlayRenderBox = Overlay.of(context).context.findRenderObject() as RenderBox;
+        final editorRenderBox = selectable.context.findRenderObject() as RenderBox;
 
         final editorOffset = editorRenderBox.localToGlobal(
           Offset.zero,
           ancestor: overlayRenderBox,
         );
 
-        final indicatorTop =
-            (isCloserToStart ? startOffset.dy : endOffset.dy) + editorOffset.dy;
+        final indicatorTop = (isCloserToStart ? startOffset.dy : endOffset.dy) + editorOffset.dy;
 
         final width = blockRect.topRight.dx - startOffset.dx;
         return Positioned(
@@ -622,8 +615,7 @@ class _DesktopSelectionServiceWidgetState
             margin: widget.dropTargetStyle.margin,
             constraints: widget.dropTargetStyle.constraints,
             decoration: BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(widget.dropTargetStyle.borderRadius),
+              borderRadius: BorderRadius.circular(widget.dropTargetStyle.borderRadius),
               color: widget.dropTargetStyle.color,
             ),
           ),
@@ -676,8 +668,7 @@ class _DesktopSelectionServiceWidgetState
   }
 }
 
-class _ContextMenuKeyboardInterceptor
-    extends AppFlowyKeyboardServiceInterceptor {
+class _ContextMenuKeyboardInterceptor extends AppFlowyKeyboardServiceInterceptor {
   @override
   Future<bool> interceptInsert(
     TextEditingDeltaInsertion insertion,

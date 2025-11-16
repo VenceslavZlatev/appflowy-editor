@@ -15,8 +15,7 @@ Future<void> onInsert(
 
   /// On mobile devices, the "/" is context-sensitive,which means it can't be
   /// recognized as a standalone character. This requires special handling.
-  final isMobileSlash =
-      UniversalPlatform.isMobile && insertion.textInserted == '/';
+  final isMobileSlash = UniversalPlatform.isMobile && insertion.textInserted == '/';
 
   // In France, the backtick key is used to toggle a character style.
   // We should prevent the execution of character shortcut events when the
@@ -55,7 +54,12 @@ Future<void> onInsert(
   if (node == null) {
     return;
   }
-  assert(node.delta != null);
+
+  // Skip insertion if node doesn't have delta (e.g., video blocks, image blocks)
+  // This prevents errors when text input tries to insert into non-text nodes
+  if (node.delta == null) {
+    return;
+  }
 
   if (kDebugMode) {
     // verify the toggled keys are supported.

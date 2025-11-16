@@ -92,9 +92,12 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
         return KeyEventResult.handled;
       }
 
-      // Prevent backspace from navigating out of image captions at position 0
+      // Prevent backspace from navigating out of image or video captions at position 0
       // Similar to how table cells work
       if (node.parent?.type == ImageBlockKeys.type && position.offset == 0) {
+        return KeyEventResult.handled;
+      }
+      if (node.parent?.type == VideoBlockKeys.type && position.offset == 0) {
         return KeyEventResult.handled;
       }
 
@@ -383,6 +386,11 @@ CommandShortcutEventHandler _backspaceInBlockSelection = (editorState) {
   final node = editorState.getNodeAtPath(selection.start.path);
   if (node == null) {
     return KeyEventResult.ignored;
+  }
+
+  // Prevent deletion of caption paragraphs (children of image or video blocks)
+  if (node.parent?.type == ImageBlockKeys.type || node.parent?.type == VideoBlockKeys.type) {
+    return KeyEventResult.handled;
   }
 
   final transaction = editorState.transaction;
