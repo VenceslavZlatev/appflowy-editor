@@ -118,9 +118,7 @@ class _MobileToolbarV2State extends State<MobileToolbarV2> {
       builder: (_, Selection? selection, __) {
         // if the selection is null, hide the toolbar
         if (selection == null ||
-            widget.editorState.selectionExtraInfo?[
-                    selectionExtraInfoDisableMobileToolbarKey] ==
-                true) {
+            widget.editorState.selectionExtraInfo?[selectionExtraInfoDisableMobileToolbarKey] == true) {
           return const SizedBox.shrink();
         }
         return RepaintBoundary(
@@ -189,10 +187,10 @@ class _MobileToolbar extends StatefulWidget {
   State<_MobileToolbar> createState() => _MobileToolbarState();
 }
 
-class _MobileToolbarState extends State<_MobileToolbar>
-    implements MobileToolbarWidgetService {
+class _MobileToolbarState extends State<_MobileToolbar> implements MobileToolbarWidgetService {
   // used to control the toolbar menu items
   PropertyValueNotifier<bool> showMenuNotifier = PropertyValueNotifier(false);
+  PropertyValueNotifier<bool> showInlineMenuNotifier = PropertyValueNotifier(false);
 
   // when the users click the menu item, the keyboard will be hidden,
   //  but in this case, we don't want to update the cached keyboard height.
@@ -206,6 +204,7 @@ class _MobileToolbarState extends State<_MobileToolbar>
   Selection? currentSelection;
 
   bool closeKeyboardInitiative = false;
+  final Set<String> _persistentInlineAttributes = <String>{};
 
   @override
   void initState() {
@@ -213,23 +212,38 @@ class _MobileToolbarState extends State<_MobileToolbar>
 
     currentSelection = widget.editorState.selection;
     KeyboardHeightObserver.instance.addListener(_onKeyboardHeightChanged);
+    widget.editorState.selectionNotifier.addListener(_handleSelectionChanged);
   }
 
   @override
   void didUpdateWidget(covariant _MobileToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (currentSelection != widget.editorState.selection) {
+    if (oldWidget.editorState != widget.editorState) {
+      oldWidget.editorState.selectionNotifier.removeListener(_handleSelectionChanged);
+      widget.editorState.selectionNotifier.addListener(_handleSelectionChanged);
       currentSelection = widget.editorState.selection;
-      closeItemMenu();
+      _syncPersistentInlineAttributes();
+    }
+
+    final newSelection = widget.editorState.selection;
+    if (currentSelection != newSelection) {
+      currentSelection = newSelection;
+      if (newSelection == null) {
+        closeItemMenu();
+      } else if (showMenuNotifier.value) {
+        closeItemMenu();
+      }
     }
   }
 
   @override
   void dispose() {
     showMenuNotifier.dispose();
+    showInlineMenuNotifier.dispose();
     cachedKeyboardHeight.dispose();
     KeyboardHeightObserver.instance.removeListener(_onKeyboardHeightChanged);
+    widget.editorState.selectionNotifier.removeListener(_handleSelectionChanged);
 
     super.dispose();
   }
@@ -259,6 +273,33 @@ class _MobileToolbarState extends State<_MobileToolbar>
   @override
   void closeItemMenu() {
     showMenuNotifier.value = false;
+    showInlineMenuNotifier.value = false;
+    selectedMenuIndex = null;
+  }
+
+  @override
+  bool isMenuItemActive(int index) {
+    if (selectedMenuIndex != index) {
+      return false;
+    }
+    return showMenuNotifier.value || showInlineMenuNotifier.value;
+  }
+
+  @override
+  bool isInlineAttributeActive(String attributeKey) {
+    return _persistentInlineAttributes.contains(attributeKey);
+  }
+
+  @override
+  void setInlineAttributeActive(String attributeKey, bool isActive) {
+    if (isActive) {
+      _persistentInlineAttributes.add(attributeKey);
+    } else {
+      _persistentInlineAttributes.remove(attributeKey);
+    }
+
+    widget.editorState.updateToggledStyle(attributeKey, isActive);
+    _syncPersistentInlineAttributes();
   }
 
   void showItemMenu() {
@@ -267,10 +308,7 @@ class _MobileToolbarState extends State<_MobileToolbar>
 
   void _onKeyboardHeightChanged(double height) {
     // if the keyboard is not closed initiative, we need to close the menu at same time
-    if (!closeKeyboardInitiative &&
-        cachedKeyboardHeight.value != 0 &&
-        !showMenuNotifier.value &&
-        height == 0) {
+    if (!closeKeyboardInitiative && cachedKeyboardHeight.value != 0 && !showMenuNotifier.value && height == 0) {
       widget.editorState.selection = null;
     }
 
@@ -278,8 +316,7 @@ class _MobileToolbarState extends State<_MobileToolbar>
       cachedKeyboardHeight.value = height;
       if (defaultTargetPlatform == TargetPlatform.android) {
         if (cachedKeyboardHeight.value != 0) {
-          cachedKeyboardHeight.value +=
-              MediaQuery.of(context).viewPadding.bottom;
+          cachedKeyboardHeight.value += MediaQuery.of(context).viewPadding.bottom;
         }
       }
     }
@@ -289,99 +326,193 @@ class _MobileToolbarState extends State<_MobileToolbar>
     }
   }
 
+  void _handleSelectionChanged() {
+    _syncPersistentInlineAttributes();
+  }
+
+  void _syncPersistentInlineAttributes() {
+    if (_persistentInlineAttributes.isEmpty) {
+      return;
+    }
+    final selection = widget.editorState.selection;
+    if (selection == null) {
+      return;
+    }
+    for (final attributeKey in _persistentInlineAttributes) {
+      widget.editorState.updateToggledStyle(attributeKey, true);
+    }
+  }
+
   // toolbar list view and close keyboard/menu button
   Widget _buildToolbar(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final style = MobileToolbarTheme.of(context);
-
-    return Container(
-      width: width,
-      height: style.toolbarHeight,
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: style.itemOutlineColor,
-          ),
-          bottom: BorderSide(color: style.itemOutlineColor),
+    final decoration = BoxDecoration(
+      border: Border(
+        top: BorderSide(
+          color: style.itemOutlineColor,
         ),
-        color: style.backgroundColor,
+        bottom: BorderSide(color: style.itemOutlineColor),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // toolbar list view
-          Expanded(
-            child: _ToolbarItemListView(
-              toolbarItems: widget.toolbarItems,
-              editorState: widget.editorState,
-              toolbarWidgetService: this,
-              itemWithActionOnPressed: (_) {
-                if (showMenuNotifier.value) {
-                  closeItemMenu();
-                  _showKeyboard();
-                  // update the cached keyboard height after the keyboard is shown
-                  Debounce.debounce('canUpdateCachedKeyboardHeight',
-                      const Duration(milliseconds: 500), () {
-                    canUpdateCachedKeyboardHeight = true;
-                  });
-                }
-              },
-              itemWithMenuOnPressed: (index) {
-                // click the same one
-                if (selectedMenuIndex == index && showMenuNotifier.value) {
-                  // if the menu is shown, close it and show the keyboard
-                  closeItemMenu();
-                  _showKeyboard();
-                  // update the cached keyboard height after the keyboard is shown
-                  Debounce.debounce('canUpdateCachedKeyboardHeight',
-                      const Duration(milliseconds: 500), () {
-                    canUpdateCachedKeyboardHeight = true;
-                  });
-                } else {
-                  canUpdateCachedKeyboardHeight = false;
-                  selectedMenuIndex = index;
-                  closeKeyboardInitiative = true;
-                  showItemMenu();
-                  _closeKeyboard();
-                }
-              },
+      color: style.backgroundColor,
+    );
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: showInlineMenuNotifier,
+      builder: (_, showingInlineMenu, __) {
+        if (showingInlineMenu && selectedMenuIndex != null) {
+          return Container(
+            width: width,
+            height: style.toolbarHeight,
+            decoration: decoration,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 4,
             ),
-          ),
-          // divider
-          const Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: 8,
-            ),
-            child: VerticalDivider(
-              width: 1,
-            ),
-          ),
-          // close menu or close keyboard button
-          ValueListenableBuilder(
-            valueListenable: showMenuNotifier,
-            builder: (_, showingMenu, __) {
-              return _CloseKeyboardOrMenuButton(
-                showingMenu: showingMenu,
-                onPressed: () {
-                  if (showingMenu) {
-                    // close the menu and show the keyboard
-                    closeItemMenu();
-                    _showKeyboard();
-                  } else {
-                    closeKeyboardInitiative = true;
-                    // close the keyboard and clear the selection
-                    // if the selection is null, the keyboard and the toolbar will be hidden automatically
-                    widget.editorState.selection = null;
-                  }
+            child: _buildInlineMenuContent(context),
+          );
+        }
+
+        return Container(
+          width: width,
+          height: style.toolbarHeight,
+          decoration: decoration,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // toolbar list view
+              Expanded(
+                child: _ToolbarItemListView(
+                  toolbarItems: widget.toolbarItems,
+                  editorState: widget.editorState,
+                  toolbarWidgetService: this,
+                  itemWithActionOnPressed: (_) {
+                    if (showMenuNotifier.value) {
+                      closeItemMenu();
+                      _showKeyboard();
+                      // update the cached keyboard height after the keyboard is shown
+                      Debounce.debounce('canUpdateCachedKeyboardHeight', const Duration(milliseconds: 500), () {
+                        canUpdateCachedKeyboardHeight = true;
+                      });
+                    }
+                  },
+                  itemWithMenuOnPressed: (index) {
+                    final toolbarItem = widget.toolbarItems[index];
+                    if (toolbarItem.displayMenuInline) {
+                      if (selectedMenuIndex == index && showInlineMenuNotifier.value) {
+                        closeItemMenu();
+                        _showKeyboard();
+                      } else {
+                        selectedMenuIndex = index;
+                        showInlineMenuNotifier.value = true;
+                        if (showMenuNotifier.value) {
+                          showMenuNotifier.value = false;
+                          _showKeyboard();
+                          Debounce.debounce(
+                            'canUpdateCachedKeyboardHeight',
+                            const Duration(milliseconds: 500),
+                            () => canUpdateCachedKeyboardHeight = true,
+                          );
+                        } else {
+                          _showKeyboard();
+                        }
+                      }
+                      return;
+                    }
+
+                    // click the same one
+                    if (selectedMenuIndex == index && showMenuNotifier.value) {
+                      // if the menu is shown, close it and show the keyboard
+                      closeItemMenu();
+                      _showKeyboard();
+                      // update the cached keyboard height after the keyboard is shown
+                      Debounce.debounce('canUpdateCachedKeyboardHeight', const Duration(milliseconds: 500), () {
+                        canUpdateCachedKeyboardHeight = true;
+                      });
+                    } else {
+                      canUpdateCachedKeyboardHeight = false;
+                      selectedMenuIndex = index;
+                      closeKeyboardInitiative = true;
+                      showItemMenu();
+                      _closeKeyboard();
+                    }
+                  },
+                ),
+              ),
+              // divider
+              const Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: 8,
+                ),
+                child: VerticalDivider(
+                  width: 1,
+                ),
+              ),
+              // close menu or close keyboard button
+              ValueListenableBuilder(
+                valueListenable: showMenuNotifier,
+                builder: (_, showingMenu, __) {
+                  return _CloseKeyboardOrMenuButton(
+                    showingMenu: showingMenu,
+                    onPressed: () {
+                      if (showingMenu) {
+                        // close the menu and show the keyboard
+                        closeItemMenu();
+                        _showKeyboard();
+                      } else {
+                        closeKeyboardInitiative = true;
+                        // close the keyboard and clear the selection
+                        // if the selection is null, the keyboard and the toolbar will be hidden automatically
+                        widget.editorState.selection = null;
+                      }
+                    },
+                  );
                 },
-              );
-            },
+              ),
+              const SizedBox(
+                width: 4.0,
+              ),
+            ],
           ),
-          const SizedBox(
-            width: 4.0,
+        );
+      },
+    );
+  }
+
+  Widget _buildInlineMenuContent(BuildContext context) {
+    final style = MobileToolbarTheme.of(context);
+    final toolbarItem = selectedMenuIndex != null ? widget.toolbarItems[selectedMenuIndex!] : null;
+    final menuBuilder = toolbarItem?.itemMenuBuilder;
+    final Widget menu = ((toolbarItem != null && menuBuilder != null)
+            ? menuBuilder(
+                context,
+                widget.editorState,
+                this,
+              )
+            : null) ??
+        const SizedBox.shrink();
+
+    return Row(
+      children: [
+        IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(
+            minHeight: 40,
+            minWidth: 40,
           ),
-        ],
-      ),
+          onPressed: closeItemMenu,
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: style.iconColor,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: SizedBox(
+            height: style.toolbarHeight,
+            child: menu,
+          ),
+        ),
+      ],
     );
   }
 
@@ -408,9 +539,7 @@ class _MobileToolbarState extends State<_MobileToolbar>
                   ? MobileToolbarItemMenu(
                       editorState: widget.editorState,
                       itemMenuBuilder: () {
-                        final menu = widget
-                            .toolbarItems[selectedMenuIndex!].itemMenuBuilder!
-                            .call(
+                        final menu = widget.toolbarItems[selectedMenuIndex!].itemMenuBuilder!.call(
                           context,
                           widget.editorState,
                           this,
@@ -455,6 +584,7 @@ class _ToolbarItemListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = MobileToolbarTheme.of(context);
     return ListView.builder(
       itemBuilder: (context, index) {
         final toolbarItem = toolbarItems[index];
@@ -466,22 +596,38 @@ class _ToolbarItemListView extends StatelessWidget {
         if (icon == null) {
           return const SizedBox.shrink();
         }
-        return IconButton(
-          icon: icon,
-          onPressed: () {
-            if (toolbarItem.hasMenu) {
-              // open /close current item menu through its parent widget(MobileToolbarWidget)
-              itemWithMenuOnPressed(index);
-            } else {
-              itemWithActionOnPressed(index);
-              // close menu if other item's menu is still on the screen
-              toolbarWidgetService.closeItemMenu();
-              toolbarItems[index].actionHandler?.call(
-                    context,
-                    editorState,
-                  );
-            }
-          },
+        final isActive = toolbarWidgetService.isMenuItemActive(index);
+        return Container(
+          margin: const EdgeInsets.symmetric(
+            vertical: 4,
+            horizontal: 2,
+          ),
+          decoration: isActive
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(style.borderRadius),
+                  border: Border.all(
+                    color: style.itemHighlightColor,
+                    width: style.buttonSelectedBorderWidth,
+                  ),
+                )
+              : null,
+          child: IconButton(
+            icon: icon,
+            onPressed: () {
+              if (toolbarItem.hasMenu) {
+                // open /close current item menu through its parent widget(MobileToolbarWidget)
+                itemWithMenuOnPressed(index);
+              } else {
+                itemWithActionOnPressed(index);
+                // close menu if other item's menu is still on the screen
+                toolbarWidgetService.closeItemMenu();
+                toolbarItems[index].actionHandler?.call(
+                      context,
+                      editorState,
+                    );
+              }
+            },
+          ),
         );
       },
       itemCount: toolbarItems.length,

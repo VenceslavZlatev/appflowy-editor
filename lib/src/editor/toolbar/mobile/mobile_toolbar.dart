@@ -86,8 +86,17 @@ class MobileToolbar extends StatelessWidget {
 
 /// To update the state of the [MobileToolbarWidget]
 abstract class MobileToolbarWidgetService {
-  /// close item menu and enable keyboard
+  /// Close item menu and enable keyboard.
   void closeItemMenu();
+
+  /// Returns true when the toolbar item at [index] is in an active state.
+  bool isMenuItemActive(int index);
+
+  /// Whether a persistent inline attribute is currently active.
+  bool isInlineAttributeActive(String attributeKey);
+
+  /// Update a persistent inline attribute state.
+  void setInlineAttributeActive(String attributeKey, bool isActive);
 }
 
 class MobileToolbarWidget extends StatefulWidget with WidgetsBindingObserver {
@@ -106,8 +115,7 @@ class MobileToolbarWidget extends StatefulWidget with WidgetsBindingObserver {
   State<MobileToolbarWidget> createState() => MobileToolbarWidgetState();
 }
 
-class MobileToolbarWidgetState extends State<MobileToolbarWidget>
-    implements MobileToolbarWidgetService {
+class MobileToolbarWidgetState extends State<MobileToolbarWidget> implements MobileToolbarWidgetService {
   bool _showItemMenu = false;
   int? _selectedToolbarItemIndex;
 
@@ -122,6 +130,19 @@ class MobileToolbarWidgetState extends State<MobileToolbarWidget>
       });
     }
   }
+
+  @override
+  bool isMenuItemActive(int index) {
+    return _showItemMenu && _selectedToolbarItemIndex == index;
+  }
+
+  @override
+  bool isInlineAttributeActive(String attributeKey) {
+    return false;
+  }
+
+  @override
+  void setInlineAttributeActive(String attributeKey, bool isActive) {}
 
   @override
   Widget build(BuildContext context) {
@@ -165,12 +186,10 @@ class MobileToolbarWidgetState extends State<MobileToolbarWidget>
 
                         if (!_showItemMenu) {
                           // updateKeyboardHeight = true;
-                          widget.editorState.service.keyboardService
-                              ?.enableKeyBoard(widget.selection);
+                          widget.editorState.service.keyboardService?.enableKeyBoard(widget.selection);
                         } else {
                           updateKeyboardHeight = false;
-                          widget.editorState.service.keyboardService
-                              ?.closeKeyboard();
+                          widget.editorState.service.keyboardService?.closeKeyboard();
                         }
                       } else {
                         _selectedToolbarItemIndex = selectedItemIndex;
@@ -178,8 +197,7 @@ class MobileToolbarWidgetState extends State<MobileToolbarWidget>
                         _showItemMenu = true;
                         // close keyboard when menu pop up
 
-                        widget.editorState.service.keyboardService
-                            ?.closeKeyboard();
+                        widget.editorState.service.keyboardService?.closeKeyboard();
                       }
                     });
                   },
@@ -196,8 +214,7 @@ class MobileToolbarWidgetState extends State<MobileToolbarWidget>
                       onPressed: () {
                         setState(() {
                           _showItemMenu = false;
-                          widget.editorState.service.keyboardService
-                              ?.enableKeyBoard(widget.selection);
+                          widget.editorState.service.keyboardService?.enableKeyBoard(widget.selection);
                         });
                       },
                       icon: AFMobileIcon(

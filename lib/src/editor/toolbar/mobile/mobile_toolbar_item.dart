@@ -21,12 +21,14 @@ class MobileToolbarItem {
     required this.actionHandler,
   })  : hasMenu = false,
         itemMenuBuilder = null,
+        displayMenuInline = false,
         assert(itemIconBuilder != null && actionHandler != null);
 
   /// Tool bar item that opens a menu to show options
   const MobileToolbarItem.withMenu({
     required this.itemIconBuilder,
     required this.itemMenuBuilder,
+    this.displayMenuInline = false,
   })  : hasMenu = true,
         actionHandler = null,
         assert(itemMenuBuilder != null && itemIconBuilder != null);
@@ -37,4 +39,5 @@ class MobileToolbarItem {
 
   final bool hasMenu;
   final MobileToolbarItemIconBuilder? itemMenuBuilder;
+  final bool displayMenuInline;
 }

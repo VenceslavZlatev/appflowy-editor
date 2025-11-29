@@ -70,13 +70,11 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
     TextInputConfiguration configuration,
   ) {
     final formattedValue = textEditingValue.format();
-    if (!formattedValue.isValid() ||
-        currentTextEditingValue == formattedValue) {
+    if (!formattedValue.isValid() || currentTextEditingValue == formattedValue) {
       return;
     }
 
-    if (_textInputConnection == null ||
-        _textInputConnection!.attached == false) {
+    if (_textInputConnection == null || _textInputConnection!.attached == false) {
       _textInputConnection = TextInput.attach(
         this,
         configuration,
@@ -117,9 +115,7 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
     // need to debounce it to combine them together.
     Debounce.debounce(
       debounceKey,
-      PlatformExtension.isMobile
-          ? const Duration(milliseconds: 10)
-          : Duration.zero,
+      PlatformExtension.isMobile ? const Duration(milliseconds: 10) : Duration.zero,
       () async {
         final oldValue = _currentTextEditingValue?.copyWith();
         currentTextEditingValue = value;
@@ -245,9 +241,7 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
   @override
   void insertContent(KeyboardInsertedContent content) {
     assert(
-      contentInsertionConfiguration?.allowedMimeTypes
-              .contains(content.mimeType) ??
-          false,
+      contentInsertionConfiguration?.allowedMimeTypes.contains(content.mimeType) ?? false,
     );
     contentInsertionConfiguration?.onContentInserted.call(content);
   }
@@ -256,9 +250,7 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
     if (delta is TextEditingDeltaNonTextUpdate) {
       composingTextRange = delta.composing;
     } else {
-      composingTextRange = composingTextRange != null &&
-              composingTextRange!.start != -1 &&
-              delta.composing.end != -1
+      composingTextRange = composingTextRange != null && composingTextRange!.start != -1 && delta.composing.end != -1
           ? TextRange(
               start: composingTextRange!.start,
               end: delta.composing.end,
@@ -267,8 +259,7 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
     }
 
     // solve the issue where the Chinese IME doesn't continue deleting after the input content has been deleted.
-    if (PlatformExtension.isMacOS &&
-        (composingTextRange?.isCollapsed ?? false)) {
+    if (PlatformExtension.isMacOS && (composingTextRange?.isCollapsed ?? false)) {
       composingTextRange = TextRange.empty;
     }
   }
@@ -339,8 +330,7 @@ extension TextEditingDeltaInsertionExtension on TextEditingDeltaInsertion {
     return TextEditingDeltaInsertion(
       oldText: startWithSpace ? oldText << _len : oldText,
       textInserted: textInserted,
-      insertionOffset:
-          startWithSpace ? insertionOffset - _len : insertionOffset,
+      insertionOffset: startWithSpace ? insertionOffset - _len : insertionOffset,
       selection: startWithSpace ? selection << _len : selection,
       composing: startWithSpace ? composing << _len : composing,
     );
