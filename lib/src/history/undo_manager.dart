@@ -89,12 +89,13 @@ class UndoManager {
   final FixedSizeStack undoStack;
   final FixedSizeStack redoStack;
   EditorState? state;
+  bool _isRedoing = false;
 
   UndoManager([int stackSize = 20])
       : undoStack = FixedSizeStack(stackSize),
         redoStack = FixedSizeStack(stackSize);
 
-  HistoryItem getUndoHistoryItem() {
+  HistoryItem getUndoHistoryItem({bool clearRedoStack = true}) {
     if (undoStack.isEmpty) {
       final item = HistoryItem();
       undoStack.push(item);
@@ -102,7 +103,10 @@ class UndoManager {
     }
     final last = undoStack.last;
     if (last.sealed) {
-      redoStack.clear();
+      // Don't clear redo stack if we're in the middle of a redo operation
+      if (clearRedoStack && !_isRedoing) {
+        redoStack.clear();
+      }
       final item = HistoryItem();
       undoStack.push(item);
       return item;
@@ -140,14 +144,19 @@ class UndoManager {
     if (historyItem == null) {
       return;
     }
-    final transaction = historyItem.toTransaction(s);
-    s.apply(
-      transaction,
-      options: const ApplyOptions(
-        recordUndo: true,
-        recordRedo: false,
-      ),
-    );
+    _isRedoing = true;
+    try {
+      final transaction = historyItem.toTransaction(s);
+      s.apply(
+        transaction,
+        options: const ApplyOptions(
+          recordUndo: true,
+          recordRedo: false,
+        ),
+      );
+    } finally {
+      _isRedoing = false;
+    }
   }
 
   void forgetRecentUndo() {
