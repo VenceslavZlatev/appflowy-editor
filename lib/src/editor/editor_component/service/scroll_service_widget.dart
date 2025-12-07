@@ -21,12 +21,9 @@ class ScrollServiceWidget extends StatefulWidget {
   State<ScrollServiceWidget> createState() => _ScrollServiceWidgetState();
 }
 
-class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
-    implements AppFlowyScrollService {
-  final _forwardKey =
-      GlobalKey(debugLabel: 'forward_to_platform_scroll_service');
-  late AppFlowyScrollService forward =
-      _forwardKey.currentState as AppFlowyScrollService;
+class _ScrollServiceWidgetState extends State<ScrollServiceWidget> implements AppFlowyScrollService {
+  final _forwardKey = GlobalKey(debugLabel: 'forward_to_platform_scroll_service');
+  late AppFlowyScrollService forward = _forwardKey.currentState as AppFlowyScrollService;
 
   late EditorState editorState = context.read<EditorState>();
 
@@ -99,13 +96,11 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
 
       Rect targetRect;
       AxisDirection? direction;
-      final dynamic dragMode =
-          editorState.selectionExtraInfo?['selection_drag_mode'];
+      final dynamic dragMode = editorState.selectionExtraInfo?['selection_drag_mode'];
 
       // For desktop: if auto-scroller is already scrolling (from drag-to-select),
       // don't override it here. The desktop_selection_service handles drag scrolling.
-      if (PlatformExtension.isDesktopOrWeb &&
-          (editorState.autoScroller?.scrolling ?? false)) {
+      if (PlatformExtension.isDesktopOrWeb && (editorState.autoScroller?.scrolling ?? false)) {
         return;
       }
 
@@ -123,8 +118,8 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
 
           /// sometimes moving up in a long single node may be not working
           /// so we need to special handle this case.
-          final isInSingleNode = (lastSelection?.isSingle ?? false) &&
-              lastSelection?.start.path == selection.start.path;
+          final isInSingleNode =
+              (lastSelection?.isSingle ?? false) && lastSelection?.start.path == selection.start.path;
           if (selection.isForward && isInSingleNode) {
             targetRect = selectionRects.first;
           }
@@ -137,32 +132,29 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
       if (PlatformExtension.isMobile) {
         // Determine if this is a drag operation
         final bool isDragOperation = dragMode != null &&
-            (dragMode.toString() ==
-                    'MobileSelectionDragMode.leftSelectionHandle' ||
-                dragMode.toString() ==
-                    'MobileSelectionDragMode.rightSelectionHandle');
+            (dragMode.toString() == 'MobileSelectionDragMode.leftSelectionHandle' ||
+                dragMode.toString() == 'MobileSelectionDragMode.rightSelectionHandle');
 
-        // Use animation for drag operations, instant for others
-        final scrollDuration =
-            isDragOperation ? const Duration(milliseconds: 2) : Duration.zero;
+        // Prevent auto-scrolling when dragging selection handles
+        // This allows users to adjust selection without the page scrolling automatically
+        if (isDragOperation) {
+          return;
+        }
 
         // soft keyboard
         // workaround: wait for the soft keyboard to show up
-        final keyboardDelay = KeyboardHeightObserver.currentKeyboardHeight == 0
-            ? const Duration(milliseconds: 250)
-            : Duration.zero;
+        final keyboardDelay =
+            KeyboardHeightObserver.currentKeyboardHeight == 0 ? const Duration(milliseconds: 250) : Duration.zero;
 
         Future.delayed(keyboardDelay, () {
           if (_forwardKey.currentContext == null) {
             return;
           }
-          // Mobile needs to continuously update scroll position/direction during drag
-          // Don't skip even if already scrolling, because direction may have changed
           startAutoScroll(
             endTouchPoint,
             edgeOffset: editorState.autoScrollEdgeOffset,
             direction: direction,
-            duration: scrollDuration,
+            duration: Duration.zero,
           );
         });
       } else {

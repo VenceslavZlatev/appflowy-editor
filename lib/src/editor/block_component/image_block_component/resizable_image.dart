@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:string_validator/string_validator.dart';
 
@@ -126,6 +127,11 @@ class _ResizableImageState extends State<ResizableImage> {
         child = _buildError(context);
       }
     }
+    final isMobile = _isMobile();
+    final handleTouchWidth = isMobile ? 30.0 : 5.0;
+    final handleVisualWidth = isMobile ? 8.0 : 5.0;
+    final handleOffset = isMobile ? 0.0 : 5.0;
+
     return Stack(
       children: [
         child,
@@ -133,9 +139,10 @@ class _ResizableImageState extends State<ResizableImage> {
           _buildEdgeGesture(
             context,
             top: 0,
-            left: 5,
+            left: handleOffset,
             bottom: 0,
-            width: 5,
+            width: handleTouchWidth,
+            visualWidth: handleVisualWidth,
             onUpdate: (distance) {
               setState(() {
                 moveDistance = distance;
@@ -145,9 +152,10 @@ class _ResizableImageState extends State<ResizableImage> {
           _buildEdgeGesture(
             context,
             top: 0,
-            right: 5,
+            right: handleOffset,
             bottom: 0,
-            width: 5,
+            width: handleTouchWidth,
+            visualWidth: handleVisualWidth,
             onUpdate: (distance) {
               setState(() {
                 moveDistance = -distance;
@@ -192,6 +200,10 @@ class _ResizableImageState extends State<ResizableImage> {
     );
   }
 
+  bool _isMobile() {
+    return !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+  }
+
   Widget _buildEdgeGesture(
     BuildContext context, {
     double? top,
@@ -199,8 +211,11 @@ class _ResizableImageState extends State<ResizableImage> {
     double? right,
     double? bottom,
     double? width,
+    double? visualWidth,
     void Function(double distance)? onUpdate,
   }) {
+    final isMobile = _isMobile();
+    final handleVisualWidth = visualWidth ?? width ?? 5.0;
     return Positioned(
       top: top,
       left: left,
@@ -208,6 +223,7 @@ class _ResizableImageState extends State<ResizableImage> {
       bottom: bottom,
       width: width,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (details) {
           initialOffset = details.globalPosition.dx;
         },
@@ -229,16 +245,20 @@ class _ResizableImageState extends State<ResizableImage> {
         },
         child: MouseRegion(
           cursor: SystemMouseCursors.resizeLeftRight,
-          child: onFocus
+          child: (onFocus || isMobile)
               ? Center(
                   child: Container(
-                    height: 40,
+                    width: handleVisualWidth,
+                    height: isMobile ? 60 : 40,
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
+                      color: Colors.black.withValues(alpha: isMobile ? 0.7 : 0.5),
                       borderRadius: const BorderRadius.all(
                         Radius.circular(5.0),
                       ),
-                      border: Border.all(width: 1, color: Colors.white),
+                      border: Border.all(
+                        width: isMobile ? 2 : 1,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 )
