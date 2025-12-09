@@ -211,6 +211,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
 
   @override
   Widget build(BuildContext context) {
+    // Wrap entire table in scroll view for horizontal scrolling
     Widget child = Scrollbar(
       controller: _scrollController,
       child: SingleChildScrollView(
@@ -222,7 +223,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
           editorState: editorState,
           menuBuilder: widget.menuBuilder,
           tableStyle: widget.tableStyle,
-          scrollController: _scrollController,
+          scrollController: _scrollController, // Pass controller for TableDragAddArea auto-scroll
         ),
       ),
     );

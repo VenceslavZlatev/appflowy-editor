@@ -3,6 +3,7 @@ import 'package:appflowy_editor/src/editor/block_component/table_block_component
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_col_border.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_drag_data.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_row.dart';
+import 'package:appflowy_editor/src/editor/util/platform_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +16,7 @@ class TableCol extends StatefulWidget {
     required this.tableStyle,
     required this.rowDragNotifier,
     required this.rowActionNotifier,
+    required this.cellFocusNotifier,
     this.menuBuilder,
   });
 
@@ -27,6 +29,7 @@ class TableCol extends StatefulWidget {
   final TableStyle tableStyle;
   final TableRowDragNotifier rowDragNotifier;
   final TableRowActionNotifier rowActionNotifier;
+  final TableCellFocusNotifier cellFocusNotifier;
 
   @override
   State<TableCol> createState() => _TableColState();
@@ -107,14 +110,24 @@ class _TableColState extends State<TableCol> {
                       onExit: (_) => setState(() => _colActionVisiblity = false),
                       child: Column(children: _buildCells(context)),
                     ),
-                    TableActionHandler(
-                      visible: _colActionVisiblity,
-                      node: widget.tableNode.node,
-                      editorState: widget.editorState,
-                      position: widget.colIdx,
-                      alignment: Alignment.topCenter,
-                      menuBuilder: widget.menuBuilder,
-                      dir: TableDirection.col,
+                    ListenableBuilder(
+                      listenable: widget.cellFocusNotifier,
+                      builder: (context, child) {
+                        final isFocused = widget.cellFocusNotifier.isColFocused(widget.colIdx);
+                        // On mobile, show when cell is focused (selected)
+                        // On desktop, show only on hover
+                        final isMobile = PlatformExtension.isMobile;
+                        final shouldShow = isMobile ? isFocused : _colActionVisiblity;
+                        return TableActionHandler(
+                          visible: shouldShow,
+                          node: widget.tableNode.node,
+                          editorState: widget.editorState,
+                          position: widget.colIdx,
+                          alignment: Alignment.topCenter,
+                          menuBuilder: widget.menuBuilder,
+                          dir: TableDirection.col,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -186,6 +199,7 @@ class _TableColState extends State<TableCol> {
       // Wrap the cell with the row action notifier for hover detection
       cellWidget = _TableColWithRowActionNotifier(
         rowActionNotifier: widget.rowActionNotifier,
+        cellFocusNotifier: widget.cellFocusNotifier,
         child: cellWidget,
       );
 
@@ -290,16 +304,25 @@ class _TableColState extends State<TableCol> {
 class _TableColWithRowActionNotifier extends StatelessWidget {
   const _TableColWithRowActionNotifier({
     required this.rowActionNotifier,
+    required this.cellFocusNotifier,
     required this.child,
   });
 
   final TableRowActionNotifier rowActionNotifier;
+  final TableCellFocusNotifier cellFocusNotifier;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<TableRowActionNotifier>.value(
-      value: rowActionNotifier,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<TableRowActionNotifier>.value(
+          value: rowActionNotifier,
+        ),
+        ChangeNotifierProvider<TableCellFocusNotifier>.value(
+          value: cellFocusNotifier,
+        ),
+      ],
       child: child,
     );
   }

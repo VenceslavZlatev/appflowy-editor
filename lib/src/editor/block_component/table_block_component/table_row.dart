@@ -54,6 +54,34 @@ class TableRowActionNotifier extends ChangeNotifier {
   }
 }
 
+/// Notifier to track which cell is currently focused (for mobile)
+class TableCellFocusNotifier extends ChangeNotifier {
+  int? _focusedRowIndex;
+  int? _focusedColIndex;
+
+  int? get focusedRowIndex => _focusedRowIndex;
+  int? get focusedColIndex => _focusedColIndex;
+
+  void setFocusedCell(int? rowIndex, int? colIndex) {
+    if (_focusedRowIndex != rowIndex || _focusedColIndex != colIndex) {
+      _focusedRowIndex = rowIndex;
+      _focusedColIndex = colIndex;
+      notifyListeners();
+    }
+  }
+
+  void clear() {
+    if (_focusedRowIndex != null || _focusedColIndex != null) {
+      _focusedRowIndex = null;
+      _focusedColIndex = null;
+      notifyListeners();
+    }
+  }
+
+  bool isRowFocused(int rowIndex) => _focusedRowIndex == rowIndex;
+  bool isColFocused(int colIndex) => _focusedColIndex == colIndex;
+}
+
 /// Wrapper widget for a table row cell that handles drag and drop
 class TableRowDragTarget extends StatelessWidget {
   const TableRowDragTarget({
