@@ -58,28 +58,64 @@ class TableRowActionNotifier extends ChangeNotifier {
 class TableCellFocusNotifier extends ChangeNotifier {
   int? _focusedRowIndex;
   int? _focusedColIndex;
+  int? _endRowIndex;
+  int? _endColIndex;
 
   int? get focusedRowIndex => _focusedRowIndex;
   int? get focusedColIndex => _focusedColIndex;
+  int? get endRowIndex => _endRowIndex;
+  int? get endColIndex => _endColIndex;
 
   void setFocusedCell(int? rowIndex, int? colIndex) {
-    if (_focusedRowIndex != rowIndex || _focusedColIndex != colIndex) {
+    if (_focusedRowIndex != rowIndex || _focusedColIndex != colIndex || _endRowIndex != null || _endColIndex != null) {
       _focusedRowIndex = rowIndex;
       _focusedColIndex = colIndex;
+      _endRowIndex = null;
+      _endColIndex = null;
+      notifyListeners();
+    }
+  }
+
+  void updateFocusEnd(int rowIndex, int colIndex) {
+    if (_endRowIndex != rowIndex || _endColIndex != colIndex) {
+      _endRowIndex = rowIndex;
+      _endColIndex = colIndex;
       notifyListeners();
     }
   }
 
   void clear() {
-    if (_focusedRowIndex != null || _focusedColIndex != null) {
+    if (_focusedRowIndex != null || _focusedColIndex != null || _endRowIndex != null || _endColIndex != null) {
       _focusedRowIndex = null;
       _focusedColIndex = null;
+      _endRowIndex = null;
+      _endColIndex = null;
       notifyListeners();
     }
   }
 
   bool isRowFocused(int rowIndex) => _focusedRowIndex == rowIndex;
   bool isColFocused(int colIndex) => _focusedColIndex == colIndex;
+
+  bool isCellFocused(int rowIndex, int colIndex) {
+    if (_focusedRowIndex == null || _focusedColIndex == null) return false;
+
+    if (_endRowIndex == null || _endColIndex == null) {
+      return _focusedRowIndex == rowIndex && _focusedColIndex == colIndex;
+    }
+
+    final r1 = _focusedRowIndex!;
+    final r2 = _endRowIndex!;
+    final c1 = _focusedColIndex!;
+    final c2 = _endColIndex!;
+
+    final minRow = r1 < r2 ? r1 : r2;
+    final maxRow = r1 > r2 ? r1 : r2;
+    final minCol = c1 < c2 ? c1 : c2;
+    final maxCol = c1 > c2 ? c1 : c2;
+
+    return rowIndex >= minRow && rowIndex <= maxRow && colIndex >= minCol && colIndex <= maxCol;
+  }
 }
 
 /// Wrapper widget for a table row cell that handles drag and drop
@@ -88,26 +124,38 @@ class TableRowDragTarget extends StatelessWidget {
     super.key,
     required this.tableNode,
     required this.rowIdx,
+    required this.colIdx,
     required this.editorState,
     required this.child,
     required this.dragNotifier,
+    required this.cellFocusNotifier,
   });
 
   final Node tableNode;
   final int rowIdx;
+  final int colIdx;
   final EditorState editorState;
   final Widget child;
   final TableRowDragNotifier dragNotifier;
+  final TableCellFocusNotifier cellFocusNotifier;
 
   @override
   Widget build(BuildContext context) {
     return DragTarget<TableDragData>(
       onWillAcceptWithDetails: (details) {
+        if (details.data.dir == TableDirection.cell) {
+          return true;
+        }
         return details.data.dir == TableDirection.row &&
             details.data.node == tableNode &&
             details.data.position != rowIdx;
       },
       onAcceptWithDetails: (details) {
+        if (details.data.dir == TableDirection.cell) {
+          // Commit selection? The notifier update during drag is enough for visual.
+          // Maybe trigger something else? For now, visual is key.
+          return;
+        }
         TableActions.move(
           tableNode,
           details.data.position,
@@ -123,10 +171,15 @@ class TableRowDragTarget extends StatelessWidget {
         // Update the notifier when hover state changes
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (isHovering) {
-            dragNotifier.setHoveredRow(rowIdx);
-            // Track the dragged row position
-            final draggedPosition = candidateData.isNotEmpty ? candidateData.first?.position : null;
-            dragNotifier.setDraggedRowPosition(draggedPosition);
+            final data = candidateData.first;
+            if (data?.dir == TableDirection.cell) {
+              cellFocusNotifier.updateFocusEnd(rowIdx, colIdx);
+            } else {
+              dragNotifier.setHoveredRow(rowIdx);
+              // Track the dragged row position
+              final draggedPosition = data?.position;
+              dragNotifier.setDraggedRowPosition(draggedPosition);
+            }
           } else if (dragNotifier.hoveredRow == rowIdx) {
             dragNotifier.clear();
           }

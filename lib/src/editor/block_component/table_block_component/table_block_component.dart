@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'table_view.dart';
+import 'table_row.dart';
 
 class TableBlockKeys {
   const TableBlockKeys._();
@@ -66,7 +67,7 @@ class TableDefaults {
   static const Color borderHoverColor = Colors.blue;
 }
 
-enum TableDirection { row, col }
+enum TableDirection { row, col, cell }
 
 typedef TableBlockComponentMenuBuilder = Widget Function(
   Node,
@@ -74,8 +75,9 @@ typedef TableBlockComponentMenuBuilder = Widget Function(
   int,
   TableDirection,
   VoidCallback?,
-  VoidCallback?,
-);
+  VoidCallback?, {
+  TableCellFocusNotifier? cellFocusNotifier,
+});
 
 class TableBlockComponentBuilder extends BlockComponentBuilder {
   TableBlockComponentBuilder({
@@ -212,18 +214,21 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
   @override
   Widget build(BuildContext context) {
     // Wrap entire table in scroll view for horizontal scrolling
-    Widget child = Scrollbar(
-      controller: _scrollController,
-      child: SingleChildScrollView(
-        // padding: const EdgeInsets.only(top: 10, left: 10, bottom: 4),
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        child: TableView(
-          tableNode: widget.tableNode,
-          editorState: editorState,
-          menuBuilder: widget.menuBuilder,
-          tableStyle: widget.tableStyle,
-          scrollController: _scrollController, // Pass controller for TableDragAddArea auto-scroll
+    Widget child = Align(
+      alignment: Alignment.topLeft,
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: SingleChildScrollView(
+          // padding: const EdgeInsets.only(top: 10, left: 10, bottom: 4),
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          child: TableView(
+            tableNode: widget.tableNode,
+            editorState: editorState,
+            menuBuilder: widget.menuBuilder,
+            tableStyle: widget.tableStyle,
+            scrollController: _scrollController, // Pass controller for TableDragAddArea auto-scroll
+          ),
         ),
       ),
     );

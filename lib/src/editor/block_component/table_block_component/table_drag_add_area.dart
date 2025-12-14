@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/util.dart';
+import 'package:appflowy_editor/src/editor/util/platform_extension.dart';
 import 'package:flutter/material.dart';
 
 /// A draggable area that adds/removes table rows or columns by dragging
@@ -10,7 +13,7 @@ class TableDragAddArea extends StatefulWidget {
     required this.editorState,
     required this.direction,
     required this.width,
-    required this.height,
+    this.height,
     required this.borderColor,
     required this.borderHoverColor,
     this.scrollController,
@@ -20,7 +23,7 @@ class TableDragAddArea extends StatefulWidget {
   final EditorState editorState;
   final TableDirection direction;
   final double width;
-  final double height;
+  final double? height;
   final Color borderColor;
   final Color borderHoverColor;
   final ScrollController? scrollController;
@@ -37,8 +40,23 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
   Offset? _dragStartPosition;
   SelectionGestureInterceptor? _selectionInterceptor;
 
+  // Minimum height that an empty row is likely to render at (ignoring the smaller default attribute)
+  // This prevents the drag handle from overshooting (moving faster than mouse)
+  static const double _kMinInteractiveRowHeight = 30.0;
+
+  // Overlay to enforce resize cursor during drag even if mouse leaves the handle
+  OverlayEntry? _cursorOverrideOverlay;
+
+  // Overlay for tooltip (especially needed on mobile to avoid clipping)
+  OverlayEntry? _tooltipOverlay;
+
+  // GlobalKey to get the position of the drag area
+  final GlobalKey _dragAreaKey = GlobalKey();
+
   @override
   void dispose() {
+    _removeCursorOverride();
+    _removeTooltipOverlay();
     // Clean up interceptor if it exists
     if (_selectionInterceptor != null) {
       widget.editorState.selectionService.unregisterGestureInterceptor(_selectionInterceptor!.key);
@@ -48,64 +66,93 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
+    final isRowDirection = widget.direction == TableDirection.row;
+    final shouldShowActiveState = PlatformExtension.isMobile || _isHovering || _isDragging;
+
+    // The handle is always anchored to the table edge (no visual translation).
+    // It moves only when the table structure changes (rows/cols added/removed).
+
+    return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (event) {
-        // Prevent text selection by consuming the event
-        _onDragStart(
-          DragStartDetails(
-            globalPosition: event.position,
-            localPosition: event.localPosition,
-          ),
-        );
-      },
-      onPointerMove: (event) {
-        if (_isDragging) {
-          _onDragUpdate(
-            DragUpdateDetails(
-              globalPosition: event.position,
-              localPosition: event.localPosition,
-              delta: event.delta,
-            ),
-          );
-        }
-      },
-      onPointerUp: (event) {
-        if (_isDragging) {
-          _onDragEnd(DragEndDetails());
-        }
-      },
+      onTap: _handleTapAdd,
+      onVerticalDragStart: isRowDirection ? _onDragStart : null,
+      onVerticalDragUpdate: isRowDirection ? _onDragUpdate : null,
+      onVerticalDragEnd: isRowDirection ? _onDragEnd : null,
+      onVerticalDragCancel: isRowDirection ? () => _onDragEnd(DragEndDetails()) : null,
+      onHorizontalDragStart: isRowDirection ? null : _onDragStart,
+      onHorizontalDragUpdate: isRowDirection ? null : _onDragUpdate,
+      onHorizontalDragEnd: isRowDirection ? null : _onDragEnd,
+      onHorizontalDragCancel: isRowDirection ? null : () => _onDragEnd(DragEndDetails()),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovering = true),
         onExit: (_) => setState(() => _isHovering = false),
         cursor: widget.direction == TableDirection.col ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
-        child: _isHovering || _isDragging
-            ? Container(
-                alignment: widget.direction == TableDirection.col ? Alignment.centerLeft : Alignment.center,
-                width: widget.width,
-                height: widget.height,
-                decoration: BoxDecoration(
-                  color:
-                      _isHovering || _isDragging ? widget.borderHoverColor.withValues(alpha: 0.1) : Colors.transparent,
-                  borderRadius: BorderRadius.all(Radius.circular(4)),
-                  border: Border.all(
-                    color: _isHovering || _isDragging
-                        ? widget.borderHoverColor.withValues(alpha: 0.5)
-                        : Colors.transparent,
-                    width: 1,
+        child: Stack(
+          key: _dragAreaKey,
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            shouldShowActiveState
+                ? Container(
+                    alignment: widget.direction == TableDirection.col ? Alignment.centerLeft : Alignment.center,
+                    width: widget.width,
+                    height: widget.height,
+                    margin: EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color:
+                          shouldShowActiveState ? widget.borderHoverColor.withValues(alpha: 0.1) : Colors.transparent,
+                      borderRadius: BorderRadius.all(Radius.circular(4)),
+                      border: Border.all(
+                        color:
+                            shouldShowActiveState ? widget.borderHoverColor.withValues(alpha: 0.5) : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.add,
+                        size: 16,
+                        color: widget.borderHoverColor,
+                      ),
+                    ),
+                  )
+                : SizedBox(width: widget.width, height: widget.height),
+            // Only show tooltip in Stack for desktop (not mobile) to avoid clipping issues
+            if (_isDragging && !PlatformExtension.isMobile)
+              Positioned(
+                // For row direction (bottom handle): position below the handle
+                // For col direction (vertical handle): position at a fixed offset from center
+                top: widget.direction == TableDirection.row ? (widget.height ?? 20) + 4 : null,
+                bottom: widget.direction == TableDirection.col ? -24 : null,
+                left: widget.direction == TableDirection.col ? -5 : null,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${widget.tableNode.attributes[TableBlockKeys.colsLen]}x${widget.tableNode.attributes[TableBlockKeys.rowsLen]}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.add,
-                    size: 16,
-                    color: widget.borderHoverColor,
-                  ),
-                ),
-              )
-            : SizedBox(width: widget.width, height: widget.height),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  void _handleTapAdd() {
+    if (_isDragging) return;
+    _addSingleEntry();
   }
 
   void _onDragStart(DragStartDetails details) {
@@ -118,6 +165,14 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
       canDoubleTap: (details) => false, // Prevent double tap selection
     );
     widget.editorState.selectionService.registerGestureInterceptor(_selectionInterceptor!);
+
+    // Enforce resize cursor globally during drag
+    _addCursorOverride();
+
+    // Show tooltip in overlay on mobile
+    if (PlatformExtension.isMobile) {
+      _addTooltipOverlay();
+    }
 
     setState(() {
       _isDragging = true;
@@ -136,17 +191,40 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
         ? details.globalPosition.dx - _dragStartPosition!.dx
         : details.globalPosition.dy - _dragStartPosition!.dy;
 
-    // Calculate how many rows/columns to add based on drag distance
-    final threshold = widget.direction == TableDirection.col ? 100.0 : 50.0;
-    final newCount = (delta / threshold).floor().clamp(-_initialCount + 1, 10);
+    // Calculate how many rows/columns to add based on drag distance.
+    final tableNodeWrapper = TableNode(node: widget.tableNode);
+    final config = tableNodeWrapper.config;
+
+    // We use the default height/width + border width as the threshold.
+    // Use a realistic minimum height for rows to match rendered content and prevent overshoot.
+    final threshold = widget.direction == TableDirection.col
+        ? config.colDefaultWidth + config.borderWidth
+        : max(config.rowDefaultHeight, _kMinInteractiveRowHeight) + config.borderWidth;
+
+    // Use ceil() instead of floor() to trigger addition as soon as the drag "starts to leave"
+    // the current handle position (> 0), providing immediate feedback.
+    // For deletion (negative delta), ceil() effectively waits for a full row traversal, preventing accidental deletion.
+    final newCount = (delta / threshold).ceil().clamp(-_initialCount + 1, 10);
 
     if (newCount != _tempAddedCount) {
       _updateTableSize(newCount);
-      setState(() => _tempAddedCount = newCount);
+    }
+
+    // Update visual drag offset and trigger rebuild
+    setState(() {
+      _tempAddedCount = newCount;
+    });
+
+    // Update tooltip position on mobile
+    if (PlatformExtension.isMobile && _tooltipOverlay != null) {
+      _updateTooltipOverlay();
     }
   }
 
   void _onDragEnd(DragEndDetails details) {
+    _removeCursorOverride();
+    _removeTooltipOverlay();
+
     // Unregister selection interceptor to allow text selection again
     if (_selectionInterceptor != null) {
       widget.editorState.selectionService.unregisterGestureInterceptor(_selectionInterceptor!.key);
@@ -158,6 +236,124 @@ class _TableDragAddAreaState extends State<TableDragAddArea> {
       _dragStartPosition = null;
       _tempAddedCount = 0;
     });
+  }
+
+  void _addCursorOverride() {
+    if (_cursorOverrideOverlay != null) return;
+
+    final cursor =
+        widget.direction == TableDirection.col ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow;
+
+    _cursorOverrideOverlay = OverlayEntry(
+      builder: (context) => Positioned.fill(
+        child: MouseRegion(
+          cursor: cursor,
+          child: Container(
+            color: Colors.transparent,
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_cursorOverrideOverlay!);
+  }
+
+  void _removeCursorOverride() {
+    if (_cursorOverrideOverlay != null) {
+      _cursorOverrideOverlay!.remove();
+      _cursorOverrideOverlay = null;
+    }
+  }
+
+  void _addTooltipOverlay() {
+    if (_tooltipOverlay != null) return;
+
+    _tooltipOverlay = OverlayEntry(
+      builder: (context) => _buildTooltipOverlay(),
+    );
+
+    Overlay.of(context).insert(_tooltipOverlay!);
+  }
+
+  void _updateTooltipOverlay() {
+    if (_tooltipOverlay != null) {
+      _tooltipOverlay!.markNeedsBuild();
+    }
+  }
+
+  void _removeTooltipOverlay() {
+    if (_tooltipOverlay != null) {
+      _tooltipOverlay!.remove();
+      _tooltipOverlay = null;
+    }
+  }
+
+  Widget _buildTooltipOverlay() {
+    final renderBox = _dragAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return const SizedBox.shrink();
+    }
+
+    final globalPosition = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+
+    final tooltipText =
+        '${widget.tableNode.attributes[TableBlockKeys.colsLen]}x${widget.tableNode.attributes[TableBlockKeys.rowsLen]}';
+    final tooltipWidget = Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          tooltipText,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+
+    // Calculate tooltip position
+    if (widget.direction == TableDirection.row) {
+      // For row direction (bottom handle): position below the handle, centered horizontally
+      return Positioned(
+        left: globalPosition.dx + size.width / 2,
+        top: globalPosition.dy + (widget.height ?? 20) + 4,
+        child: Transform.translate(
+          offset: const Offset(-30, 0), // Approximate half-width offset to center (adjust if needed)
+          child: tooltipWidget,
+        ),
+      );
+    } else {
+      // For col direction (vertical handle): position at a fixed offset from center
+      return Positioned(
+        left: globalPosition.dx - 5,
+        top: globalPosition.dy + size.height / 2 - 24,
+        child: tooltipWidget,
+      );
+    }
+  }
+
+  void _addSingleEntry() {
+    final currentCount = widget.direction == TableDirection.col
+        ? widget.tableNode.attributes[TableBlockKeys.colsLen] as int
+        : widget.tableNode.attributes[TableBlockKeys.rowsLen] as int;
+
+    TableActions.add(
+      widget.tableNode,
+      currentCount,
+      widget.editorState,
+      widget.direction,
+    );
+
+    if (widget.direction == TableDirection.col && widget.scrollController != null) {
+      _scrollToNewColumn();
+    }
   }
 
   void _updateTableSize(int countDelta) {

@@ -1,10 +1,7 @@
 import 'package:appflowy_editor/appflowy_editor.dart';
-import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_action_handler.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_col.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_drag_add_area.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_row.dart';
-import 'package:appflowy_editor/src/editor/block_component/table_block_component/util.dart';
-import 'package:appflowy_editor/src/editor/util/platform_extension.dart';
 import 'package:flutter/material.dart';
 
 class TableView extends StatefulWidget {
@@ -31,6 +28,14 @@ class _TableViewState extends State<TableView> {
   late TableRowDragNotifier _rowDragNotifier;
   late TableRowActionNotifier _rowActionNotifier;
   late TableCellFocusNotifier _cellFocusNotifier;
+  // Tracks which column's resize handle is currently hovered/active
+  late ValueNotifier<int?> _colResizeHoverNotifier;
+
+  // GlobalKey to measure the actual rendered height of the table
+  final GlobalKey _tableContentKey = GlobalKey();
+
+  // Store the measured height to avoid measuring during build
+  double? _measuredHeight;
 
   @override
   void initState() {
@@ -38,9 +43,15 @@ class _TableViewState extends State<TableView> {
     _rowDragNotifier = TableRowDragNotifier();
     _rowActionNotifier = TableRowActionNotifier();
     _cellFocusNotifier = TableCellFocusNotifier();
+    _colResizeHoverNotifier = ValueNotifier<int?>(null);
 
     // Listen to selection changes to update focused cell
     widget.editorState.selectionNotifier.addListener(_onSelectionChanged);
+
+    // Measure height after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureTableHeight();
+    });
   }
 
   @override
@@ -49,7 +60,29 @@ class _TableViewState extends State<TableView> {
     _rowDragNotifier.dispose();
     _rowActionNotifier.dispose();
     _cellFocusNotifier.dispose();
+    _colResizeHoverNotifier.dispose();
     super.dispose();
+  }
+
+  /// Measure the actual rendered height of the table content
+  void _measureTableHeight() {
+    if (!mounted) return;
+
+    final renderBox = _tableContentKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null && renderBox.hasSize) {
+      final newHeight = renderBox.size.height;
+      if (_measuredHeight != newHeight) {
+        setState(() {
+          _measuredHeight = newHeight;
+        });
+      }
+    }
+  }
+
+  /// Get the actual rendered height of the table content
+  double _getActualTableHeight() {
+    // Use measured height if available, otherwise fallback to calculated height
+    return _measuredHeight ?? widget.tableNode.colsHeight;
   }
 
   void _onSelectionChanged() {
@@ -87,16 +120,17 @@ class _TableViewState extends State<TableView> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
+    return Column(
+      key: _tableContentKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Main table content
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: EdgeInsets.only(left: 10),
+        Padding(
+          padding: EdgeInsets.only(left: 10),
+          child: IntrinsicHeight(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 10),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   ..._buildColumns(context),
                   SizedBox(width: 5),
@@ -107,7 +141,7 @@ class _TableViewState extends State<TableView> {
                       editorState: widget.editorState,
                       direction: TableDirection.col,
                       width: 20,
-                      height: widget.tableNode.colsHeight,
+                      height: null,
                       borderColor: widget.tableStyle.borderColor,
                       borderHoverColor: widget.tableStyle.borderHoverColor,
                       scrollController: widget.scrollController,
@@ -116,23 +150,21 @@ class _TableViewState extends State<TableView> {
                 ],
               ),
             ),
-            SizedBox(height: 5),
-            Padding(
-              padding: EdgeInsets.only(left: 10),
-              child: TableDragAddArea(
-                tableNode: widget.tableNode.node,
-                editorState: widget.editorState,
-                direction: TableDirection.row,
-                width: widget.tableNode.tableWidth,
-                height: 20,
-                borderColor: widget.tableStyle.borderColor,
-                borderHoverColor: widget.tableStyle.borderHoverColor,
-              ),
-            ),
-          ],
+          ),
         ),
-        // Row action handlers overlaid on the left
-        _buildRowActionHandlers(context),
+        SizedBox(height: 5),
+        Padding(
+          padding: EdgeInsets.only(left: 10),
+          child: TableDragAddArea(
+            tableNode: widget.tableNode.node,
+            editorState: widget.editorState,
+            direction: TableDirection.row,
+            width: widget.tableNode.tableWidth,
+            height: 20,
+            borderColor: widget.tableStyle.borderColor,
+            borderHoverColor: widget.tableStyle.borderHoverColor,
+          ),
+        ),
       ],
     );
   }
@@ -140,54 +172,20 @@ class _TableViewState extends State<TableView> {
   List<Widget> _buildColumns(BuildContext context) {
     return List.generate(
       widget.tableNode.colsLen,
-      (i) => TableCol(
-        colIdx: i,
-        editorState: widget.editorState,
-        tableNode: widget.tableNode,
-        menuBuilder: widget.menuBuilder,
-        tableStyle: widget.tableStyle,
-        rowDragNotifier: _rowDragNotifier,
-        rowActionNotifier: _rowActionNotifier,
-        cellFocusNotifier: _cellFocusNotifier,
-      ),
-    );
-  }
-
-  Widget _buildRowActionHandlers(BuildContext context) {
-    return Positioned(
-      top: 10, // Match the top padding of the table
-      child: ListenableBuilder(
-        listenable: Listenable.merge([_rowActionNotifier, _cellFocusNotifier]),
-        builder: (context, child) {
-          final isMobile = PlatformExtension.isMobile;
-          return Column(
-            children: List.generate(
-              widget.tableNode.rowsLen,
-              (rowIdx) {
-                final cellNode = widget.tableNode.getCell(0, rowIdx);
-                final isHovered = _rowActionNotifier.hoveredRowIndex == rowIdx;
-                final isFocused = _cellFocusNotifier.isRowFocused(rowIdx);
-                // On mobile, show when cell is focused (selected)
-                // On desktop, show only on hover
-                final shouldShow = isMobile ? isFocused : isHovered;
-
-                return SizedBox(
-                  height: cellNode.cellHeight + (widget.tableNode.config.borderWidth),
-                  child: TableActionHandler(
-                    visible: shouldShow,
-                    node: widget.tableNode.node,
-                    editorState: widget.editorState,
-                    position: rowIdx,
-                    alignment: Alignment.centerLeft,
-                    height: cellNode.cellHeight,
-                    menuBuilder: widget.menuBuilder,
-                    dir: TableDirection.row,
-                  ),
-                );
-              },
-            ),
-          );
-        },
+      (i) => RepaintBoundary(
+        key: ValueKey('table_col_${widget.tableNode.node.id}_$i'),
+        child: TableCol(
+          colIdx: i,
+          editorState: widget.editorState,
+          tableNode: widget.tableNode,
+          menuBuilder: widget.menuBuilder,
+          tableStyle: widget.tableStyle,
+          rowDragNotifier: _rowDragNotifier,
+          rowActionNotifier: _rowActionNotifier,
+          cellFocusNotifier: _cellFocusNotifier,
+          colResizeHoverNotifier: _colResizeHoverNotifier,
+          scrollController: widget.scrollController,
+        ),
       ),
     );
   }

@@ -16,8 +16,7 @@ Future<void> onDelete(
   // IME
   if (selection.isSingle) {
     final node = editorState.getNodeAtPath(selection.start.path);
-    if (node?.delta != null &&
-        (deletion.composing.isValid || !deletion.deletedRange.isCollapsed)) {
+    if (node?.delta != null && (deletion.composing.isValid || !deletion.deletedRange.isCollapsed)) {
       final node = editorState.getNodesInSelection(selection).first;
       final start = deletion.deletedRange.start;
       final length = deletion.deletedRange.end - start;
@@ -41,8 +40,7 @@ Future<void> onDelete(
   }
 
   // use backspace command instead.
-  if (KeyEventResult.ignored ==
-      convertToParagraphCommand.execute(editorState)) {
+  if (KeyEventResult.ignored == convertToParagraphCommand.execute(editorState)) {
     backspaceCommand.execute(editorState);
   }
 }

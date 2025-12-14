@@ -39,12 +39,12 @@ class RemoteBlockSelectionsArea extends StatelessWidget {
         child ??= const SizedBox.shrink();
         final selections = value.where((e) {
           final isIn = node.inSelection(e.selection.normalized);
-          developer.log(
-              'CursorDebug: Filter check for ${e.id}. Node: ${node.path}, Sel: ${e.selection.start.path}. In? $isIn');
+          // developer.log(
+          //     'CursorDebug: Filter check for ${e.id}. Node: ${node.path}, Sel: ${e.selection.start.path}. In? $isIn');
           return isIn;
         }).toList();
 
-        developer.log('CursorDebug: Selections for node ${node.id} (path ${node.path}): ${selections.length}');
+        //developer.log('CursorDebug: Selections for node ${node.id} (path ${node.path}): ${selections.length}');
 
         if (selections.isEmpty) {
           return child;

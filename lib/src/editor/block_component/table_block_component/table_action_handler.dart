@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_action_menu.dart';
+import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_row.dart';
 import 'package:flutter/material.dart';
 
 class TableActionHandler extends StatefulWidget {
@@ -16,6 +17,7 @@ class TableActionHandler extends StatefulWidget {
     this.transform,
     required this.dir,
     this.menuBuilder,
+    this.cellFocusNotifier,
   });
 
   final bool visible;
@@ -26,6 +28,7 @@ class TableActionHandler extends StatefulWidget {
   final Matrix4? transform;
   final double? height;
   final TableDirection dir;
+  final TableCellFocusNotifier? cellFocusNotifier;
 
   final TableBlockComponentMenuBuilder? menuBuilder;
 
@@ -55,7 +58,12 @@ class _TableActionHandlerState extends State<TableActionHandler> {
                   widget.position,
                   widget.dir,
                   () => _menuShown = true,
-                  () => setState(() => _menuShown = false),
+                  () {
+                    if (mounted) {
+                      setState(() => _menuShown = false);
+                    }
+                  },
+                  cellFocusNotifier: widget.cellFocusNotifier,
                 )
               : defaultMenuBuilder(
                   context,

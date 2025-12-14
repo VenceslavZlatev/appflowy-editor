@@ -109,8 +109,7 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
               prevBlockRect == null) {
             return sizedBox;
           }
-          final builder = editorState.service.rendererService
-              .blockComponentBuilder(widget.node.type);
+          final builder = editorState.service.rendererService.blockComponentBuilder(widget.node.type);
           final padding = builder?.configuration.blockSelectionAreaMargin(
             widget.node,
           );
@@ -127,15 +126,12 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
         }
         // show the cursor when the selection is collapsed
         else if (selection.isCollapsed) {
-          if (!widget.supportTypes.contains(BlockSelectionType.cursor) ||
-              prevCursorRect == null) {
+          if (!widget.supportTypes.contains(BlockSelectionType.cursor) || prevCursorRect == null) {
             return sizedBox;
           }
           final editorState = context.read<EditorState>();
-          final dragMode =
-              editorState.selectionExtraInfo?[selectionDragModeKey];
-          final shouldBlink = widget.delegate.shouldCursorBlink &&
-              dragMode != MobileSelectionDragMode.cursor;
+          final dragMode = editorState.selectionExtraInfo?[selectionDragModeKey];
+          final shouldBlink = widget.delegate.shouldCursorBlink && dragMode != MobileSelectionDragMode.cursor;
           final cursor = Cursor(
             key: cursorKey,
             rect: prevCursorRect!,
@@ -151,8 +147,7 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
           if (!widget.supportTypes.contains(BlockSelectionType.selection) ||
               prevSelectionRects == null ||
               prevSelectionRects!.isEmpty ||
-              (prevSelectionRects!.length == 1 &&
-                  prevSelectionRects!.first.width == 0)) {
+              (prevSelectionRects!.length == 1 && prevSelectionRects!.first.width == 0)) {
             return sizedBox;
           }
           return SelectionAreaPaint(
@@ -195,8 +190,7 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
             });
           }
         }
-      } else if (widget.supportTypes.contains(BlockSelectionType.cursor) &&
-          selection.isCollapsed) {
+      } else if (widget.supportTypes.contains(BlockSelectionType.cursor) && selection.isCollapsed) {
         final rect = widget.delegate.getCursorRectInPosition(selection.start);
         if (rect != prevCursorRect) {
           setState(() {
@@ -215,9 +209,7 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
           });
         }
       }
-    } else if (prevBlockRect != null ||
-        prevSelectionRects != null ||
-        prevCursorRect != null) {
+    } else if (prevBlockRect != null || prevSelectionRects != null || prevCursorRect != null) {
       setState(() {
         prevBlockRect = null;
         prevSelectionRects = null;

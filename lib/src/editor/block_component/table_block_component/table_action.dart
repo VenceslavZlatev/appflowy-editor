@@ -12,7 +12,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _addCol(node, position, editorState);
-    } else {
+    } else if (dir == TableDirection.row) {
       _addRow(node, position, editorState);
     }
   }
@@ -25,7 +25,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _deleteCol(node, position, editorState);
-    } else {
+    } else if (dir == TableDirection.row) {
       _deleteRow(node, position, editorState);
     }
   }
@@ -38,7 +38,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _duplicateCol(node, position, editorState);
-    } else {
+    } else if (dir == TableDirection.row) {
       _duplicateRow(node, position, editorState);
     }
   }
@@ -51,7 +51,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _clearCol(node, position, editorState);
-    } else {
+    } else if (dir == TableDirection.row) {
       _clearRow(node, position, editorState);
     }
   }
@@ -65,7 +65,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _setColBgColor(node, position, editorState, color);
-    } else {
+    } else if (dir == TableDirection.row) {
       _setRowBgColor(node, position, editorState, color);
     }
   }
@@ -79,7 +79,7 @@ class TableActions {
   ) {
     if (dir == TableDirection.col) {
       _moveCol(node, fromPosition, toPosition, editorState);
-    } else {
+    } else if (dir == TableDirection.row) {
       _moveRow(node, fromPosition, toPosition, editorState);
     }
   }
@@ -136,11 +136,64 @@ void _addCol(Node tableNode, int position, EditorState editorState) {
   editorState.apply(transaction, withUpdateSelection: false);
 }
 
+/// Helper function to get the current cell position from selection
+_SelectionInfo? _getCurrentCellSelection(Node tableNode, EditorState editorState) {
+  final selection = editorState.selection;
+  if (selection == null || !selection.isCollapsed) {
+    return null;
+  }
+
+  // Get the node at the selection path
+  final node = editorState.getNodeAtPath(selection.start.path);
+  if (node == null) {
+    return null;
+  }
+
+  // Find the table cell node (parent of the selected node)
+  Node? cellNode = node;
+  while (cellNode != null && cellNode.type != TableCellBlockKeys.type) {
+    cellNode = cellNode.parent;
+  }
+
+  // Verify the cell belongs to this table
+  if (cellNode == null || cellNode.type != TableCellBlockKeys.type || cellNode.parent != tableNode) {
+    return null;
+  }
+
+  final rowPosition = cellNode.attributes[TableCellBlockKeys.rowPosition] as int?;
+  final colPosition = cellNode.attributes[TableCellBlockKeys.colPosition] as int?;
+
+  if (rowPosition == null || colPosition == null) {
+    return null;
+  }
+
+  return _SelectionInfo(
+    row: rowPosition,
+    col: colPosition,
+    offset: selection.start.offset,
+  );
+}
+
+class _SelectionInfo {
+  final int row;
+  final int col;
+  final int offset;
+
+  _SelectionInfo({
+    required this.row,
+    required this.col,
+    required this.offset,
+  });
+}
+
 void _addRow(Node tableNode, int position, EditorState editorState) async {
   assert(position >= 0);
 
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen];
   final int colsLen = tableNode.attributes[TableBlockKeys.colsLen];
+
+  // Capture current selection before the operation
+  final originalSelection = _getCurrentCellSelection(tableNode, editorState);
 
   // Create a single transaction for all operations
   final transaction = editorState.transaction;
@@ -219,6 +272,32 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
 
   // Apply all operations in a single transaction
   await editorState.apply(transaction, withUpdateSelection: false);
+
+  // Restore selection after transaction is applied
+  // This is more reliable than trying to calculate paths beforehand
+  if (originalSelection != null) {
+    final rowDelta = position <= originalSelection.row ? 1 : 0;
+    final newRow = originalSelection.row + rowDelta;
+    final colsLen = tableNode.attributes[TableBlockKeys.colsLen] as int;
+    final rowsLen = tableNode.attributes[TableBlockKeys.rowsLen] as int;
+
+    // Find the cell at the new position after transaction
+    if (newRow >= 0 && newRow < rowsLen && originalSelection.col >= 0 && originalSelection.col < colsLen) {
+      final newCell = getCellNode(tableNode, originalSelection.col, newRow);
+      if (newCell != null && newCell.children.isNotEmpty) {
+        final paragraph = newCell.children.first;
+        final maxOffset = paragraph.delta?.length ?? 0;
+        final newOffset = originalSelection.offset.clamp(0, maxOffset);
+        final newSelection = Selection.collapsed(
+          Position(path: paragraph.path, offset: newOffset),
+        );
+        editorState.updateSelectionWithReason(
+          newSelection,
+          reason: SelectionUpdateReason.uiEvent,
+        );
+      }
+    }
+  }
 }
 
 void _deleteCol(Node tableNode, int col, EditorState editorState) {
@@ -255,6 +334,9 @@ void _deleteRow(Node tableNode, int row, EditorState editorState) {
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
+  // Capture current selection before the operation
+  final originalSelection = _getCurrentCellSelection(tableNode, editorState);
+
   if (rowsLen == 1) {
     if (editorState.document.root.children.length == 1) {
       final emptyParagraph = paragraphNode();
@@ -275,6 +357,42 @@ void _deleteRow(Node tableNode, int row, EditorState editorState) {
   }
 
   editorState.apply(transaction, withUpdateSelection: false);
+
+  // Restore selection after transaction is applied
+  if (originalSelection != null) {
+    int rowDelta;
+    if (row < originalSelection.row) {
+      // Row deleted above current row, shift up by 1
+      rowDelta = -1;
+    } else if (row == originalSelection.row) {
+      // Current row was deleted, move to the row above (or stay at 0 if it was the first row)
+      rowDelta = originalSelection.row > 0 ? -1 : 0;
+    } else {
+      // Row deleted below current row, no change needed
+      rowDelta = 0;
+    }
+
+    final newRow = originalSelection.row + rowDelta;
+    final colsLen = tableNode.attributes[TableBlockKeys.colsLen] as int;
+    final rowsLen = tableNode.attributes[TableBlockKeys.rowsLen] as int;
+
+    // Find the cell at the new position after transaction
+    if (newRow >= 0 && newRow < rowsLen && originalSelection.col >= 0 && originalSelection.col < colsLen) {
+      final newCell = getCellNode(tableNode, originalSelection.col, newRow);
+      if (newCell != null && newCell.children.isNotEmpty) {
+        final paragraph = newCell.children.first;
+        final maxOffset = paragraph.delta?.length ?? 0;
+        final newOffset = originalSelection.offset.clamp(0, maxOffset);
+        final newSelection = Selection.collapsed(
+          Position(path: paragraph.path, offset: newOffset),
+        );
+        editorState.updateSelectionWithReason(
+          newSelection,
+          reason: SelectionUpdateReason.uiEvent,
+        );
+      }
+    }
+  }
 }
 
 void _duplicateCol(Node tableNode, int col, EditorState editorState) {
