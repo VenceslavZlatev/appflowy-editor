@@ -292,11 +292,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
   }
 
   @override
-  Selection getSelectionInRange(Offset start, Offset end) => Selection.single(
-        path: widget.node.path,
-        startOffset: 0,
-        endOffset: 1,
-      );
+  Selection getSelectionInRange(Offset start, Offset end) => Selection.invalid();
 
   @override
   bool get shouldCursorBlink => false;

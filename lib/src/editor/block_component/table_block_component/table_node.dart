@@ -183,14 +183,38 @@ class TableNode {
     EditorState? editorState,
     Transaction? transaction,
   }) {
-    // The extra 8 is because of paragraph padding
+    // Calculate max height across all cells in the row
+    // Use renderBox.size.height directly instead of rect.height to avoid expensive localToGlobal calls
+    // Account for cell padding: EdgeInsets.symmetric(vertical: 5) = 5 top + 5 bottom = 10 total
     double maxHeight = _cells.map<double>((c) {
       final cell = c[row];
       if (cell.children.isEmpty) {
         // Return default height if cell has no children
         return _config.rowDefaultHeight;
       }
-      return cell.children.first.rect.height + 5;
+
+      final childNode = cell.children.first;
+      final renderBox = childNode.renderBox;
+
+      // If renderBox is available and has been laid out, use its size directly
+      // This is much more efficient than using rect.height which calls localToGlobal
+      if (renderBox != null && renderBox.hasSize) {
+        // Cell has padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+        // So we need to add 10 (5 top + 5 bottom) to the content height
+        return renderBox.size.height;
+      }
+
+      // Fallback: if renderBox is not available yet, use cached height or default
+      // This prevents expensive calculations during initial layout
+      final cachedHeight = cell.attributes[TableCellBlockKeys.height];
+      if (cachedHeight != null) {
+        final height = double.tryParse(cachedHeight.toString());
+        if (height != null && !height.isNaN) {
+          return height;
+        }
+      }
+
+      return _config.rowDefaultHeight;
     }).reduce(max);
 
     if (_cells[0][row].attributes[TableCellBlockKeys.height] != maxHeight && !maxHeight.isNaN) {

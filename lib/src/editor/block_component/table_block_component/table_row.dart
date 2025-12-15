@@ -84,7 +84,10 @@ class TableCellFocusNotifier extends ChangeNotifier {
     }
   }
 
+  bool suppressClear = false;
+
   void clear() {
+    if (suppressClear) return;
     if (_focusedRowIndex != null || _focusedColIndex != null || _endRowIndex != null || _endColIndex != null) {
       _focusedRowIndex = null;
       _focusedColIndex = null;
@@ -99,22 +102,41 @@ class TableCellFocusNotifier extends ChangeNotifier {
 
   bool isCellFocused(int rowIndex, int colIndex) {
     if (_focusedRowIndex == null || _focusedColIndex == null) return false;
+    final startRow = _focusedRowIndex!;
+    final startCol = _focusedColIndex!;
+    final endRow = _endRowIndex ?? startRow;
+    final endCol = _endColIndex ?? startCol;
 
-    if (_endRowIndex == null || _endColIndex == null) {
-      return _focusedRowIndex == rowIndex && _focusedColIndex == colIndex;
-    }
-
-    final r1 = _focusedRowIndex!;
-    final r2 = _endRowIndex!;
-    final c1 = _focusedColIndex!;
-    final c2 = _endColIndex!;
-
-    final minRow = r1 < r2 ? r1 : r2;
-    final maxRow = r1 > r2 ? r1 : r2;
-    final minCol = c1 < c2 ? c1 : c2;
-    final maxCol = c1 > c2 ? c1 : c2;
+    final minRow = startRow < endRow ? startRow : endRow;
+    final maxRow = startRow > endRow ? startRow : endRow;
+    final minCol = startCol < endCol ? startCol : endCol;
+    final maxCol = startCol > endCol ? startCol : endCol;
 
     return rowIndex >= minRow && rowIndex <= maxRow && colIndex >= minCol && colIndex <= maxCol;
+  }
+
+  int? get minRow {
+    if (_focusedRowIndex == null) return null;
+    final endRow = _endRowIndex ?? _focusedRowIndex!;
+    return _focusedRowIndex! < endRow ? _focusedRowIndex : endRow;
+  }
+
+  int? get maxRow {
+    if (_focusedRowIndex == null) return null;
+    final endRow = _endRowIndex ?? _focusedRowIndex!;
+    return _focusedRowIndex! > endRow ? _focusedRowIndex : endRow;
+  }
+
+  int? get minCol {
+    if (_focusedColIndex == null) return null;
+    final endCol = _endColIndex ?? _focusedColIndex!;
+    return _focusedColIndex! < endCol ? _focusedColIndex : endCol;
+  }
+
+  int? get maxCol {
+    if (_focusedColIndex == null) return null;
+    final endCol = _endColIndex ?? _focusedColIndex!;
+    return _focusedColIndex! > endCol ? _focusedColIndex : endCol;
   }
 }
 

@@ -79,12 +79,6 @@ class _TableViewState extends State<TableView> {
     }
   }
 
-  /// Get the actual rendered height of the table content
-  double _getActualTableHeight() {
-    // Use measured height if available, otherwise fallback to calculated height
-    return _measuredHeight ?? widget.tableNode.colsHeight;
-  }
-
   void _onSelectionChanged() {
     final selection = widget.editorState.selection;
     if (selection == null) {
@@ -109,6 +103,7 @@ class _TableViewState extends State<TableView> {
     if (cellNode != null && cellNode.type == TableCellBlockKeys.type && cellNode.parent == widget.tableNode.node) {
       final rowPosition = cellNode.attributes[TableCellBlockKeys.rowPosition] as int?;
       final colPosition = cellNode.attributes[TableCellBlockKeys.colPosition] as int?;
+
       if (rowPosition != null && colPosition != null) {
         _cellFocusNotifier.setFocusedCell(rowPosition, colPosition);
         return;

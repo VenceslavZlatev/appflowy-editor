@@ -95,7 +95,7 @@ void _addCol(Node tableNode, int position, EditorState editorState) {
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
   if (position != colsLen) {
-    for (var i = position; i < colsLen; i++) {
+    for (var i = colsLen - 1; i >= position; i--) {
       for (var j = 0; j < rowsLen; j++) {
         final node = getCellNode(tableNode, i, j)!;
         transaction.updateNode(node, {TableCellBlockKeys.colPosition: i + 1});
@@ -202,7 +202,7 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
   // Update existing row positions if needed
   if (position != rowsLen) {
     for (var i = 0; i < colsLen; i++) {
-      for (var j = position; j < rowsLen; j++) {
+      for (var j = rowsLen - 1; j >= position; j--) {
         final cellNode = getCellNode(tableNode, i, j);
         if (cellNode == null) {
           error = true;
@@ -257,7 +257,14 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
       insertPath = cellInPrevRow.path.next;
     }
 
-    transaction.insertNode(insertPath, node);
+    // Adjust path for previous insertions in this loop
+    // Each previous column insertion added 1 node to the children list
+    // so we must shift the target index by i.
+    // The path is [..., index]
+    final adjustedIndex = insertPath.last + i;
+    final adjustedPath = List<int>.from(insertPath)..last = adjustedIndex;
+
+    transaction.insertNode(adjustedPath, node);
   }
 
   if (error) {
@@ -435,7 +442,7 @@ void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
   // Update cell positions for rows after the insertion point
   final int rowsLenCurrent = tableNode.attributes[TableBlockKeys.rowsLen];
   for (var i = 0; i < colsLen; i++) {
-    for (var j = row + 1; j < rowsLenCurrent; j++) {
+    for (var j = rowsLenCurrent - 1; j >= row + 1; j--) {
       final cellNode = getCellNode(tableNode, i, j);
       if (cellNode != null) {
         transaction.updateNode(cellNode, {
@@ -449,8 +456,14 @@ void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
   // Insert duplicated cells
   for (var i = 0; i < colsLen; i++) {
     final node = getCellNode(tableNode, i, row)!;
+    final insertPath = node.path.next;
+
+    // Adjust path for previous insertions in this loop
+    final adjustedIndex = insertPath.last + i;
+    final adjustedPath = List<int>.from(insertPath)..last = adjustedIndex;
+
     transaction.insertNode(
-      node.path.next,
+      adjustedPath,
       node.copyWith(
         attributes: {
           ...node.attributes,
@@ -565,10 +578,13 @@ dynamic newCellNode(Node tableNode, n) {
       tableNode.attributes[TableBlockKeys.rowDefaultHeight].toString(),
     )!;
     if (row < rowsLen) {
-      nodeHeight = double.tryParse(
-            getCellNode(tableNode, 0, row)!.attributes[TableCellBlockKeys.height].toString(),
-          ) ??
-          nodeHeight;
+      final cellNode = getCellNode(tableNode, 0, row);
+      if (cellNode != null) {
+        nodeHeight = double.tryParse(
+              cellNode.attributes[TableCellBlockKeys.height].toString(),
+            ) ??
+            nodeHeight;
+      }
     }
     n.updateAttributes({TableCellBlockKeys.height: nodeHeight});
   }
@@ -578,10 +594,13 @@ dynamic newCellNode(Node tableNode, n) {
       tableNode.attributes[TableBlockKeys.colDefaultWidth].toString(),
     )!;
     if (col < colsLen) {
-      nodeWidth = double.tryParse(
-            getCellNode(tableNode, col, 0)!.attributes[TableCellBlockKeys.width].toString(),
-          ) ??
-          nodeWidth;
+      final cellNode = getCellNode(tableNode, col, 0);
+      if (cellNode != null) {
+        nodeWidth = double.tryParse(
+              cellNode.attributes[TableCellBlockKeys.width].toString(),
+            ) ??
+            nodeWidth;
+      }
     }
     n.updateAttributes({TableCellBlockKeys.width: nodeWidth});
   }
@@ -600,12 +619,44 @@ void _updateCellPositions(
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
-  for (var i = fromCol; i < colsLen; i++) {
-    for (var j = fromRow; j < rowsLen; j++) {
-      transaction.updateNode(getCellNode(tableNode, i, j)!, {
-        TableCellBlockKeys.colPosition: i + addToCol,
-        TableCellBlockKeys.rowPosition: j + addToRow,
-      });
+  if (addToCol > 0) {
+    // Shifting right: iterate backwards
+    for (var i = colsLen - 1; i >= fromCol; i--) {
+      for (var j = fromRow; j < rowsLen; j++) {
+        final cellNode = getCellNode(tableNode, i, j);
+        if (cellNode != null) {
+          transaction.updateNode(cellNode, {
+            TableCellBlockKeys.colPosition: i + addToCol,
+            TableCellBlockKeys.rowPosition: j + addToRow,
+          });
+        }
+      }
+    }
+  } else if (addToRow > 0) {
+    // Shifting down: iterate backwards
+    for (var i = fromCol; i < colsLen; i++) {
+      for (var j = rowsLen - 1; j >= fromRow; j--) {
+        final cellNode = getCellNode(tableNode, i, j);
+        if (cellNode != null) {
+          transaction.updateNode(cellNode, {
+            TableCellBlockKeys.colPosition: i + addToCol,
+            TableCellBlockKeys.rowPosition: j + addToRow,
+          });
+        }
+      }
+    }
+  } else {
+    // Shifting left or up (or no shift): iterate forwards
+    for (var i = fromCol; i < colsLen; i++) {
+      for (var j = fromRow; j < rowsLen; j++) {
+        final cellNode = getCellNode(tableNode, i, j);
+        if (cellNode != null) {
+          transaction.updateNode(cellNode, {
+            TableCellBlockKeys.colPosition: i + addToCol,
+            TableCellBlockKeys.rowPosition: j + addToRow,
+          });
+        }
+      }
     }
   }
 }

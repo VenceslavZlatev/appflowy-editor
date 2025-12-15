@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
@@ -8,6 +7,7 @@ import 'package:appflowy_editor/src/editor/block_component/table_block_component
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_row.dart';
 import 'package:appflowy_editor/src/editor/util/platform_extension.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 class TableCol extends StatefulWidget {
@@ -50,8 +50,6 @@ class _TableColState extends State<TableCol> {
   // Store node references for proper cleanup
   final Map<String, Node> _listenerNodes = {};
 
-  // Debounce timer for row height updates to prevent excessive transactions
-  Timer? _rowHeightUpdateTimer;
   final Set<int> _pendingRowHeightUpdates = {};
 
   // Track which rows have been initialized to avoid redundant listener setup
@@ -63,6 +61,10 @@ class _TableColState extends State<TableCol> {
 
   // LayerLinks for cell handles (key: rowIndex)
   final Map<int, LayerLink> _cellLayerLinks = {};
+
+  // GlobalKeys for cells to calculate exact render size
+  final Map<int, GlobalKey> _cellKeys = {};
+  final ValueNotifier<double> _selectionHeightNotifier = ValueNotifier(0.0);
 
   // Track if the left part of the table is visible (for row handle visibility)
   final ValueNotifier<bool> _isLeftPartVisibleNotifier = ValueNotifier<bool>(true);
@@ -148,8 +150,9 @@ class _TableColState extends State<TableCol> {
     _isLeftPartVisibleNotifier.dispose();
     _removeOverlay();
     _removeCellHandlesOverlay();
-    _rowHeightUpdateTimer?.cancel();
+
     _cleanupListeners();
+    _selectionHeightNotifier.dispose();
     super.dispose();
   }
 
@@ -206,7 +209,7 @@ class _TableColState extends State<TableCol> {
                         editorState: widget.editorState,
                         position: index,
                         alignment: Alignment.centerLeft, // Align vertical center of cell
-                        height: null, // Let it adapt
+                        height: widget.tableNode.getRowHeight(index), // Confine to row height
                         menuBuilder: widget.menuBuilder,
                         dir: TableDirection.row,
                       ),
@@ -234,42 +237,67 @@ class _TableColState extends State<TableCol> {
           final focusedRow = widget.cellFocusNotifier.focusedRowIndex;
           final focusedCol = widget.cellFocusNotifier.focusedColIndex;
 
-          // Only show handle if this column is focused
-          if (focusedCol != widget.colIdx || focusedRow == null) {
+          if (focusedRow == null || focusedCol == null) {
             return const SizedBox.shrink();
           }
+
+          // Get selection boundaries
+          final minRow = widget.cellFocusNotifier.minRow;
+          final maxRow = widget.cellFocusNotifier.maxRow;
+          final maxCol = widget.cellFocusNotifier.maxCol;
+
+          if (minRow == null || maxRow == null || maxCol == null) {
+            return const SizedBox.shrink();
+          }
+
+          // Only show handle if this column is the rightmost column of the selection
+          if (widget.colIdx != maxCol) {
+            return const SizedBox.shrink();
+          }
+
+          // Anchor the handle to the top-most row of the selection
+          final targetRow = minRow;
 
           // Ensure we have a link for this cell
-          if (!_cellLayerLinks.containsKey(focusedRow)) {
+          if (!_cellLayerLinks.containsKey(targetRow)) {
             return const SizedBox.shrink();
           }
 
-          // Get the cell height to center the handle vertically
-          final cellHeight = widget.tableNode.getRowHeight(focusedRow);
+          // Trigger height calculation in post frame
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _calculateSelectionHeight(minRow, maxRow);
+          });
+
           final colWidth = _getColWidth();
 
-          return Positioned(
-            width: 20, // Match the row handle width
-            child: CompositedTransformFollower(
-              link: _cellLayerLinks[focusedRow]!,
-              showWhenUnlinked: false,
-              // Position on the right border, centered vertically
-              // Similar to row handle which uses Offset(-10, 5) for left side
-              // For right side: colWidth positions at right edge, cellHeight/2 centers vertically
-              // Add small offset (5) to match row handle's vertical positioning
-              offset: Offset(colWidth - 10, cellHeight / 2 - 10),
-              child: TableActionHandler(
-                visible: true,
-                node: widget.tableNode.node,
-                editorState: widget.editorState,
-                position: focusedRow,
-                alignment: Alignment.centerRight, // Align to right, center vertically
-                height: null,
-                menuBuilder: widget.menuBuilder,
-                dir: TableDirection.cell,
-                cellFocusNotifier: widget.cellFocusNotifier,
-              ),
-            ),
+          return ValueListenableBuilder<double>(
+            valueListenable: _selectionHeightNotifier,
+            builder: (context, height, _) {
+              if (height == 0) return const SizedBox.shrink();
+
+              return Positioned(
+                width: 20, // Match the row handle width
+                child: CompositedTransformFollower(
+                  link: _cellLayerLinks[targetRow]!,
+                  showWhenUnlinked: false,
+                  followerAnchor: Alignment.center,
+                  // Position strictly on the right border, centered vertically relative to the entire selection
+                  // Offset from the top-right corner of the minRow cell
+                  offset: Offset(colWidth, height / 2),
+                  child: TableActionHandler(
+                    visible: true,
+                    node: widget.tableNode.node,
+                    editorState: widget.editorState,
+                    position: maxRow, // Pass the bottom-most row as position context
+                    alignment: Alignment.center, // Center alignment
+                    height: null,
+                    menuBuilder: widget.menuBuilder,
+                    dir: TableDirection.cell,
+                    cellFocusNotifier: widget.cellFocusNotifier,
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -353,14 +381,20 @@ class _TableColState extends State<TableCol> {
                         // On desktop, show only on hover
                         final isMobile = PlatformExtension.isMobile;
                         final shouldShow = isMobile ? isFocused : _colActionVisiblity;
-                        return TableActionHandler(
-                          visible: shouldShow,
-                          node: widget.tableNode.node,
-                          editorState: widget.editorState,
-                          position: widget.colIdx,
-                          alignment: Alignment.topCenter,
-                          menuBuilder: widget.menuBuilder,
-                          dir: TableDirection.col,
+                        return Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 20, // Constrain to prevent blocking clicks on cells below
+                          child: TableActionHandler(
+                            visible: shouldShow,
+                            node: widget.tableNode.node,
+                            editorState: widget.editorState,
+                            position: widget.colIdx,
+                            alignment: Alignment.topCenter,
+                            menuBuilder: widget.menuBuilder,
+                            dir: TableDirection.col,
+                          ),
                         );
                       },
                     ),
@@ -394,7 +428,16 @@ class _TableColState extends State<TableCol> {
       ),
       Padding(
         padding: EdgeInsets.only(top: 10),
-        child: SizedBox(width: widget.tableNode.config.borderWidth),
+        child: ValueListenableBuilder<int?>(
+          valueListenable: widget.colResizeHoverNotifier,
+          builder: (context, hoveredColIdx, _) {
+            final isHovered = hoveredColIdx == widget.colIdx;
+            return Container(
+              width: widget.tableNode.config.borderWidth,
+              color: isHovered ? widget.tableStyle.borderHoverColor : widget.tableStyle.borderColor,
+            );
+          },
+        ),
       ),
     ]);
 
@@ -446,8 +489,8 @@ class _TableColState extends State<TableCol> {
             tableNode: widget.tableNode,
             editorState: widget.editorState,
             colIdx: widget.colIdx,
-            borderColor: widget.tableStyle.borderColor,
-            borderHoverColor: widget.tableStyle.borderHoverColor,
+            borderColor: Colors.transparent,
+            borderHoverColor: Colors.transparent,
             hitboxWidth: Platform.isMacOS || Platform.isAndroid ? 12 : 5.0,
             hitboxAlignment: Alignment.centerRight,
             activeColNotifier: widget.colResizeHoverNotifier,
@@ -455,6 +498,33 @@ class _TableColState extends State<TableCol> {
         ),
       ],
     );
+  }
+
+  void _calculateSelectionHeight(int minRow, int maxRow) {
+    if (!mounted) return;
+
+    final minKey = _cellKeys[minRow];
+    final maxKey = _cellKeys[maxRow];
+
+    if (minKey?.currentContext == null || maxKey?.currentContext == null) return;
+
+    final minRenderBox = minKey!.currentContext!.findRenderObject() as RenderBox;
+    final maxRenderBox = maxKey!.currentContext!.findRenderObject() as RenderBox;
+
+    // Calculate height difference relative to the minRenderBox
+    // We want the vector from minBox top-left to maxBox bottom-left (vertical component)
+    final topOfMin = minRenderBox.localToGlobal(Offset.zero);
+    final bottomOfMax = maxRenderBox.localToGlobal(Offset(0, maxRenderBox.size.height));
+
+    final heightCallback = bottomOfMax.dy - topOfMin.dy;
+
+    // Add the borders in between?
+    // localToGlobal should theoretically account for layout positions.
+    // If there are gaps (borders) between cells on screen, the global positions reflect that.
+
+    if (_selectionHeightNotifier.value != heightCallback) {
+      _selectionHeightNotifier.value = heightCallback;
+    }
   }
 
   List<Widget> _buildCells(BuildContext context) {
@@ -479,12 +549,37 @@ class _TableColState extends State<TableCol> {
         _initializedCellNodes.add(cellKey);
       }
 
-      // Use key to help Flutter identify which cells need rebuilding
-      Widget cellWidget = RepaintBoundary(
-        key: ValueKey('cell_${node.id}_${widget.colIdx}_$i'),
-        child: widget.editorState.renderer.build(
-          context,
-          node,
+      // Ensure key exists
+      _cellKeys.putIfAbsent(i, () => GlobalKey());
+
+      Widget cellWidget = KeyedSubtree(
+        key: _cellKeys[i],
+        child: RepaintBoundary(
+          key: ValueKey('cell_${node.id}_${widget.colIdx}_$i'),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              // Forced focus logic as fallback for blocked hit-tests
+              final paragraph = node.children.firstOrNull;
+              if (paragraph != null) {
+                // Focus end of valid paragraph
+                widget.editorState.updateSelectionWithReason(
+                  Selection.collapsed(
+                    Position(path: paragraph.path, offset: paragraph.delta?.length ?? 0),
+                  ),
+                  reason: SelectionUpdateReason.uiEvent,
+                );
+                // Ensure keyboard shows on mobile
+                if (PlatformExtension.isMobile) {
+                  SystemChannels.textInput.invokeMethod('TextInput.show');
+                }
+              }
+            },
+            child: widget.editorState.renderer.build(
+              context,
+              node,
+            ),
+          ),
         ),
       );
 
@@ -579,6 +674,22 @@ class _TableColState extends State<TableCol> {
 
           if (!isCellFocused) return child!;
 
+          final minRow = widget.cellFocusNotifier.minRow;
+          final maxRow = widget.cellFocusNotifier.maxRow;
+          final minCol = widget.cellFocusNotifier.minCol;
+          final maxCol = widget.cellFocusNotifier.maxCol;
+
+          // Determine borders based on position in selection range
+          final isTop = i == minRow;
+          final isBottom = i == maxRow;
+          final isLeft = widget.colIdx == minCol;
+          final isRight = widget.colIdx == maxCol;
+
+          final borderSide = BorderSide(
+            color: widget.tableStyle.borderHoverColor,
+            width: 1.5,
+          );
+
           return Stack(
             children: [
               child!,
@@ -586,9 +697,11 @@ class _TableColState extends State<TableCol> {
                 child: IgnorePointer(
                   child: Container(
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: widget.tableStyle.borderHoverColor,
-                        width: 2,
+                      border: Border(
+                        top: isTop ? borderSide : BorderSide.none,
+                        bottom: isBottom ? borderSide : BorderSide.none,
+                        left: isLeft ? borderSide : BorderSide.none,
+                        right: isRight ? borderSide : BorderSide.none,
                       ),
                     ),
                   ),
@@ -624,7 +737,15 @@ class _TableColState extends State<TableCol> {
       return;
     }
 
-    listeners[node.id] = () => updateRowHeightCallback(row);
+    listeners[node.id] = () {
+      int? currentRow = node.attributes[TableCellBlockKeys.rowPosition] as int?;
+      if (currentRow == null && node.parent != null) {
+        currentRow = node.parent!.attributes[TableCellBlockKeys.rowPosition] as int?;
+      }
+      if (currentRow != null) {
+        updateRowHeightCallback(currentRow);
+      }
+    };
     _listenerNodes[node.id] = node;
     node.addListener(listeners[node.id]!);
   }
@@ -633,46 +754,40 @@ class _TableColState extends State<TableCol> {
     // Add to pending updates
     _pendingRowHeightUpdates.add(row);
 
-    // Cancel existing timer
-    _rowHeightUpdateTimer?.cancel();
+    if (!mounted || _pendingRowHeightUpdates.isEmpty) {
+      return;
+    }
 
-    // Debounce the update to batch multiple rapid changes
-    _rowHeightUpdateTimer = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted || _pendingRowHeightUpdates.isEmpty) {
+    // Process all pending row height updates in a single transaction
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final rowsToUpdate = Set<int>.from(_pendingRowHeightUpdates);
+      _pendingRowHeightUpdates.clear();
+
+      // Filter out invalid rows
+      final validRows = rowsToUpdate.where((r) => r < widget.tableNode.rowsLen).toSet();
+      if (validRows.isEmpty) {
         return;
       }
 
-      // Process all pending row height updates in a single transaction
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+      // Reset cached width when row height changes as it might affect column layout
+      _cachedColWidth = null;
 
-        final rowsToUpdate = Set<int>.from(_pendingRowHeightUpdates);
-        _pendingRowHeightUpdates.clear();
+      // Batch update all affected rows in a single transaction
+      final transaction = widget.editorState.transaction;
+      for (final row in validRows) {
+        widget.tableNode.updateRowHeight(
+          row,
+          editorState: widget.editorState,
+          transaction: transaction,
+        );
+      }
 
-        // Filter out invalid rows
-        final validRows = rowsToUpdate.where((r) => r < widget.tableNode.rowsLen).toSet();
-        if (validRows.isEmpty) {
-          return;
-        }
-
-        // Reset cached width when row height changes as it might affect column layout
-        _cachedColWidth = null;
-
-        // Batch update all affected rows in a single transaction
-        final transaction = widget.editorState.transaction;
-        for (final row in validRows) {
-          widget.tableNode.updateRowHeight(
-            row,
-            editorState: widget.editorState,
-            transaction: transaction,
-          );
-        }
-
-        if (transaction.operations.isNotEmpty) {
-          transaction.afterSelection = transaction.beforeSelection;
-          widget.editorState.apply(transaction);
-        }
-      });
+      if (transaction.operations.isNotEmpty) {
+        transaction.afterSelection = transaction.beforeSelection;
+        widget.editorState.apply(transaction);
+      }
     });
   }
 }
