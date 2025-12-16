@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
@@ -150,7 +151,6 @@ class _TableColState extends State<TableCol> {
     _isLeftPartVisibleNotifier.dispose();
     _removeOverlay();
     _removeCellHandlesOverlay();
-
     _cleanupListeners();
     _selectionHeightNotifier.dispose();
     super.dispose();
@@ -556,29 +556,9 @@ class _TableColState extends State<TableCol> {
         key: _cellKeys[i],
         child: RepaintBoundary(
           key: ValueKey('cell_${node.id}_${widget.colIdx}_$i'),
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () {
-              // Forced focus logic as fallback for blocked hit-tests
-              final paragraph = node.children.firstOrNull;
-              if (paragraph != null) {
-                // Focus end of valid paragraph
-                widget.editorState.updateSelectionWithReason(
-                  Selection.collapsed(
-                    Position(path: paragraph.path, offset: paragraph.delta?.length ?? 0),
-                  ),
-                  reason: SelectionUpdateReason.uiEvent,
-                );
-                // Ensure keyboard shows on mobile
-                if (PlatformExtension.isMobile) {
-                  SystemChannels.textInput.invokeMethod('TextInput.show');
-                }
-              }
-            },
-            child: widget.editorState.renderer.build(
-              context,
-              node,
-            ),
+          child: widget.editorState.renderer.build(
+            context,
+            node,
           ),
         ),
       );

@@ -201,7 +201,7 @@ class TableNode {
       if (renderBox != null && renderBox.hasSize) {
         // Cell has padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5)
         // So we need to add 10 (5 top + 5 bottom) to the content height
-        return renderBox.size.height;
+        return renderBox.size.height + 10;
       }
 
       // Fallback: if renderBox is not available yet, use cached height or default
