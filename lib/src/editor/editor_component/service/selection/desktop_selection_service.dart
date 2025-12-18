@@ -303,6 +303,13 @@ class _DesktopSelectionServiceWidgetState extends State<DesktopSelectionServiceW
   }
 
   void _onTripleTapDown(TapDownDetails details) {
+    final canTripleTap = _interceptors.every(
+      (interceptor) => interceptor.canTripleTap?.call(details) ?? true,
+    );
+
+    if (!canTripleTap) {
+      return updateSelection(null);
+    }
     final offset = details.globalPosition;
     final node = getNodeInOffset(offset);
     final selectable = node?.selectable;
