@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
@@ -8,7 +7,6 @@ import 'package:appflowy_editor/src/editor/block_component/table_block_component
 import 'package:appflowy_editor/src/editor/block_component/table_block_component/table_row.dart';
 import 'package:appflowy_editor/src/editor/util/platform_extension.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 class TableCol extends StatefulWidget {
@@ -70,6 +68,9 @@ class _TableColState extends State<TableCol> {
   // Track if the left part of the table is visible (for row handle visibility)
   final ValueNotifier<bool> _isLeftPartVisibleNotifier = ValueNotifier<bool>(true);
 
+  // Track if the right part of the table (where cell handle is) is visible (for cell handle visibility)
+  final ValueNotifier<bool> _isRightPartVisibleNotifier = ValueNotifier<bool>(true);
+
   double _getColWidth() {
     if (_cachedColWidth != null) {
       return _cachedColWidth!;
@@ -113,6 +114,7 @@ class _TableColState extends State<TableCol> {
     // Listen to scroll changes to determine if left part is visible
     widget.scrollController?.addListener(_onScrollChanged);
     _updateLeftPartVisibility();
+    _updateRightPartVisibility();
     if (widget.colIdx == 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _updateOverlay();
@@ -126,6 +128,7 @@ class _TableColState extends State<TableCol> {
 
   void _onScrollChanged() {
     _updateLeftPartVisibility();
+    _updateRightPartVisibility();
   }
 
   void _updateLeftPartVisibility() {
@@ -143,12 +146,58 @@ class _TableColState extends State<TableCol> {
     }
   }
 
+  void _updateRightPartVisibility() {
+    bool isVisible;
+    if (widget.scrollController == null || !widget.scrollController!.hasClients) {
+      isVisible = true;
+    } else {
+      try {
+        final scrollPosition = widget.scrollController!.position;
+        final scrollOffset = scrollPosition.pixels;
+        final viewportWidth = scrollPosition.viewportDimension;
+
+        // Calculate the left position of this column
+        // Sum up widths of all previous columns
+        double columnLeft = 0.0;
+        for (int i = 0; i < widget.colIdx; i++) {
+          columnLeft += widget.tableNode.getColWidth(i);
+        }
+
+        // Add the left padding (10px) that's applied to the table
+        columnLeft += 10.0;
+
+        // Calculate the right edge of the column (where the handle is positioned)
+        final columnWidth = _getColWidth();
+        final columnRight = columnLeft + columnWidth;
+
+        // The viewport starts at scrollOffset and extends viewportWidth pixels
+        final viewportLeft = scrollOffset;
+        final viewportRight = scrollOffset + viewportWidth;
+
+        // Check if the column's right edge (where the handle is anchored) is visible in the viewport
+        // The handle should be visible only if the column's right edge is within the viewport bounds
+        // When scrolling left, columnRight moves relative to viewportRight
+        // If columnRight > viewportRight, the column is scrolled out to the right → hide handle
+        // If columnRight < viewportLeft, the column is scrolled out to the left → hide handle
+        // Use strict comparison to ensure handle is hidden when column is clearly out of view
+        isVisible = columnRight >= viewportLeft && columnRight <= viewportRight;
+      } catch (e) {
+        // If there's any error (e.g., position not ready), assume visible
+        isVisible = true;
+      }
+    }
+    if (_isRightPartVisibleNotifier.value != isVisible) {
+      _isRightPartVisibleNotifier.value = isVisible;
+    }
+  }
+
   OverlayEntry? _cellHandlesOverlayEntry;
 
   @override
   void dispose() {
     widget.scrollController?.removeListener(_onScrollChanged);
     _isLeftPartVisibleNotifier.dispose();
+    _isRightPartVisibleNotifier.dispose();
     _removeOverlay();
     _removeCellHandlesOverlay();
     _cleanupListeners();
@@ -232,7 +281,10 @@ class _TableColState extends State<TableCol> {
     final overlay = Overlay.of(context);
     _cellHandlesOverlayEntry = OverlayEntry(
       builder: (context) => ListenableBuilder(
-        listenable: widget.cellFocusNotifier,
+        listenable: Listenable.merge([
+          widget.cellFocusNotifier,
+          _isRightPartVisibleNotifier,
+        ]),
         builder: (context, _) {
           final focusedRow = widget.cellFocusNotifier.focusedRowIndex;
           final focusedCol = widget.cellFocusNotifier.focusedColIndex;
@@ -275,6 +327,9 @@ class _TableColState extends State<TableCol> {
             builder: (context, height, _) {
               if (height == 0) return const SizedBox.shrink();
 
+              // Use the same pattern as row handle - check visibility and pass to TableActionHandler
+              final shouldShow = _isRightPartVisibleNotifier.value;
+
               return Positioned(
                 width: 20, // Match the row handle width
                 child: CompositedTransformFollower(
@@ -285,7 +340,7 @@ class _TableColState extends State<TableCol> {
                   // Offset from the top-right corner of the minRow cell
                   offset: Offset(colWidth, height / 2),
                   child: TableActionHandler(
-                    visible: true,
+                    visible: shouldShow,
                     node: widget.tableNode.node,
                     editorState: widget.editorState,
                     position: maxRow, // Pass the bottom-most row as position context
