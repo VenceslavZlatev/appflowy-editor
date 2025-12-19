@@ -190,7 +190,11 @@ class TableNode {
       final cell = c[row];
       if (cell.children.isEmpty) {
         // Return default height if cell has no children
-        return _config.rowDefaultHeight;
+        // The cell widget uses SizedBox(height: 20) inside padding, so total height is 20 + 10 (padding) = 30
+        // But rowDefaultHeight should represent the total cell height including padding
+        // So we return rowDefaultHeight which should already account for padding, or add it if needed
+        // For consistency with cells that have content, we add the padding here
+        return _config.rowDefaultHeight + 10;
       }
 
       final childNode = cell.children.first;
@@ -200,7 +204,8 @@ class TableNode {
       // This is much more efficient than using rect.height which calls localToGlobal
       if (renderBox != null && renderBox.hasSize) {
         // Cell has padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5)
-        // So we need to add 10 (5 top + 5 bottom) to the content height
+        // The renderBox.size.height is the content height inside the padding
+        // We need to add 10 (5 top + 5 bottom) to get the total cell height including padding
         return renderBox.size.height + 10;
       }
 
@@ -214,7 +219,8 @@ class TableNode {
         }
       }
 
-      return _config.rowDefaultHeight;
+      // Fallback to default height, adding padding to match cells with content
+      return _config.rowDefaultHeight + 10;
     }).reduce(max);
 
     if (_cells[0][row].attributes[TableCellBlockKeys.height] != maxHeight && !maxHeight.isNaN) {

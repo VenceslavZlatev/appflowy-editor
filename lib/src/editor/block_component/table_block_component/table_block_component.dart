@@ -37,7 +37,7 @@ class TableStyle {
 
   const TableStyle({
     this.colWidth = 160,
-    this.rowHeight = 20,
+    this.rowHeight = 34,
     this.colMinimumWidth = 20,
     this.borderWidth = 2,
     this.addIcon = TableDefaults.addIcon,

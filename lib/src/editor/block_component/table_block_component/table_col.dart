@@ -89,8 +89,14 @@ class _TableColState extends State<TableCol> {
       widget.scrollController?.addListener(_onScrollChanged);
       _updateLeftPartVisibility();
     }
-    // Reset cache when table node or column index changes
-    if (oldWidget.tableNode != widget.tableNode || oldWidget.colIdx != widget.colIdx) {
+
+    // Check if columns were added/removed (table structure changed)
+    final oldColsLen = oldWidget.tableNode.colsLen;
+    final newColsLen = widget.tableNode.colsLen;
+    final colsLenChanged = oldColsLen != newColsLen;
+
+    // Reset cache when table node or column index changes, or when columns are added/removed
+    if (oldWidget.tableNode != widget.tableNode || oldWidget.colIdx != widget.colIdx || colsLenChanged) {
       _cachedColWidth = null;
       // Clean up listeners for old nodes
       _cleanupListeners();
@@ -98,12 +104,25 @@ class _TableColState extends State<TableCol> {
       // Rebuild overlay if needed
       if (widget.colIdx == 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _updateOverlay();
+          if (mounted) {
+            _updateOverlay();
+            // Recalculate visibility after layout
+            _updateRightPartVisibility();
+          }
         });
       }
       // Rebuild cell handles overlay for all columns
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _updateCellHandlesOverlay();
+        if (mounted) {
+          _updateCellHandlesOverlay();
+          // Recalculate visibility after layout is complete
+          // Use a double post-frame callback to ensure layout is fully complete
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _updateRightPartVisibility();
+            }
+          });
+        }
       });
     }
   }
@@ -122,7 +141,16 @@ class _TableColState extends State<TableCol> {
     }
     // Initialize cell handles overlay for all columns
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateCellHandlesOverlay();
+      if (mounted) {
+        _updateCellHandlesOverlay();
+        // Recalculate visibility after layout is complete
+        // Use a double post-frame callback to ensure layout is fully complete
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _updateRightPartVisibility();
+          }
+        });
+      }
     });
   }
 
@@ -136,10 +164,21 @@ class _TableColState extends State<TableCol> {
     if (widget.scrollController == null || !widget.scrollController!.hasClients) {
       isVisible = true;
     } else {
-      // The handle is positioned at offset -10 from the first column
-      // Since the table has left padding of 10, the handle is at the very left edge
-      // We consider it visible if scroll offset is <= 0 (or within a small threshold)
-      isVisible = widget.scrollController!.offset <= 0;
+      try {
+        final scrollPosition = widget.scrollController!.position;
+        // If there's no scrolling possible (table fits in viewport), always show the handle
+        if (scrollPosition.maxScrollExtent <= 0) {
+          isVisible = true;
+        } else {
+          // The handle is positioned at offset -10 from the first column
+          // Since the table has left padding of 10, the handle is at the very left edge
+          // We consider it visible if scroll offset is <= 0 (or within a small threshold)
+          isVisible = widget.scrollController!.offset <= 0;
+        }
+      } catch (e) {
+        // If there's any error (e.g., position not ready), assume visible
+        isVisible = true;
+      }
     }
     if (_isLeftPartVisibleNotifier.value != isVisible) {
       _isLeftPartVisibleNotifier.value = isVisible;
@@ -246,19 +285,38 @@ class _TableColState extends State<TableCol> {
                   // But we need to keep it in tree if it has state. TableActionHandler has state.
                   // However, visibility handles that.
 
+                  final rowHeight = widget.tableNode.getRowHeight(index);
+                  final borderWidth = widget.tableNode.config.borderWidth;
+
+                  // Try to get the actual rendered cell height for more accurate positioning
+                  double actualCellHeight = rowHeight;
+                  final cellKey = _cellKeys[index];
+                  if (cellKey?.currentContext != null) {
+                    final renderBox = cellKey!.currentContext!.findRenderObject() as RenderBox?;
+                    if (renderBox != null && renderBox.hasSize) {
+                      actualCellHeight = renderBox.size.height;
+                    }
+                  }
+
+                  // The stored rowHeight includes cell padding (10px)
+                  // The visual row includes the cell + border after it
+                  // Center the handle on the visual row: (actualCellHeight + borderWidth) / 2
+                  final visualRowCenter = (actualCellHeight + borderWidth) / 2;
+
                   return Positioned(
                     width: 20, // Arbitrary width for the handle area
                     child: CompositedTransformFollower(
                       link: _layerLinks[index]!,
                       showWhenUnlinked: false,
-                      offset: const Offset(-10, 5), // Shift to the left gutter
+                      followerAnchor: Alignment.centerLeft, // Center vertically, align left
+                      offset: Offset(-10, visualRowCenter), // Shift to the left gutter, center on visual row
                       child: TableActionHandler(
                         visible: shouldShow,
                         node: widget.tableNode.node,
                         editorState: widget.editorState,
                         position: index,
                         alignment: Alignment.centerLeft, // Align vertical center of cell
-                        height: widget.tableNode.getRowHeight(index), // Confine to row height
+                        height: rowHeight, // Confine to row height
                         menuBuilder: widget.menuBuilder,
                         dir: TableDirection.row,
                       ),
@@ -318,6 +376,8 @@ class _TableColState extends State<TableCol> {
           // Trigger height calculation in post frame
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _calculateSelectionHeight(minRow, maxRow);
+            // Also recalculate visibility after height is calculated
+            _updateRightPartVisibility();
           });
 
           final colWidth = _getColWidth();

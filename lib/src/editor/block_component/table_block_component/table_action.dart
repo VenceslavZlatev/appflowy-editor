@@ -684,9 +684,12 @@ void _moveCol(Node tableNode, int fromCol, int toCol, EditorState editorState) {
         final nextCell = getCellNode(tableNode, col + 1, row)!;
         final currentCell = getCellNode(tableNode, col, row)!;
 
-        // Copy attributes from next cell to current cell
+        // Copy attributes from next cell to current cell, but exclude colBackgroundColor
+        // to prevent color duplication during column moves
+        final nextAttributes = Map<String, dynamic>.from(nextCell.attributes);
+        nextAttributes.remove(TableCellBlockKeys.colBackgroundColor);
         transaction.updateNode(currentCell, {
-          ...Map<String, dynamic>.from(nextCell.attributes),
+          ...nextAttributes,
           TableCellBlockKeys.colPosition: col,
           TableCellBlockKeys.rowPosition: row,
         });
@@ -710,9 +713,12 @@ void _moveCol(Node tableNode, int fromCol, int toCol, EditorState editorState) {
         final prevCell = getCellNode(tableNode, col - 1, row)!;
         final currentCell = getCellNode(tableNode, col, row)!;
 
-        // Copy attributes from previous cell to current cell
+        // Copy attributes from previous cell to current cell, but exclude colBackgroundColor
+        // to prevent color duplication during column moves
+        final prevAttributes = Map<String, dynamic>.from(prevCell.attributes);
+        prevAttributes.remove(TableCellBlockKeys.colBackgroundColor);
         transaction.updateNode(currentCell, {
-          ...Map<String, dynamic>.from(prevCell.attributes),
+          ...prevAttributes,
           TableCellBlockKeys.colPosition: col,
           TableCellBlockKeys.rowPosition: row,
         });
@@ -728,6 +734,16 @@ void _moveCol(Node tableNode, int fromCol, int toCol, EditorState editorState) {
           );
         }
       }
+    }
+  }
+
+  // Clear color from old position before placing moved cells
+  for (var row = 0; row < rowsLen; row++) {
+    final oldCell = getCellNode(tableNode, fromCol, row);
+    if (oldCell != null) {
+      transaction.updateNode(oldCell, {
+        TableCellBlockKeys.colBackgroundColor: null,
+      });
     }
   }
 
@@ -778,9 +794,12 @@ void _moveRow(Node tableNode, int fromRow, int toRow, EditorState editorState) {
         final nextCell = getCellNode(tableNode, col, row + 1)!;
         final currentCell = getCellNode(tableNode, col, row)!;
 
-        // Copy attributes from next cell to current cell
+        // Copy attributes from next cell to current cell, but exclude rowBackgroundColor
+        // to prevent color duplication during row moves
+        final nextAttributes = Map<String, dynamic>.from(nextCell.attributes);
+        nextAttributes.remove(TableCellBlockKeys.rowBackgroundColor);
         transaction.updateNode(currentCell, {
-          ...Map<String, dynamic>.from(nextCell.attributes),
+          ...nextAttributes,
           TableCellBlockKeys.colPosition: col,
           TableCellBlockKeys.rowPosition: row,
         });
@@ -804,9 +823,12 @@ void _moveRow(Node tableNode, int fromRow, int toRow, EditorState editorState) {
         final prevCell = getCellNode(tableNode, col, row - 1)!;
         final currentCell = getCellNode(tableNode, col, row)!;
 
-        // Copy attributes from previous cell to current cell
+        // Copy attributes from previous cell to current cell, but exclude rowBackgroundColor
+        // to prevent color duplication during row moves
+        final prevAttributes = Map<String, dynamic>.from(prevCell.attributes);
+        prevAttributes.remove(TableCellBlockKeys.rowBackgroundColor);
         transaction.updateNode(currentCell, {
-          ...Map<String, dynamic>.from(prevCell.attributes),
+          ...prevAttributes,
           TableCellBlockKeys.colPosition: col,
           TableCellBlockKeys.rowPosition: row,
         });
@@ -822,6 +844,16 @@ void _moveRow(Node tableNode, int fromRow, int toRow, EditorState editorState) {
           );
         }
       }
+    }
+  }
+
+  // Clear color from old position before placing moved cells
+  for (var col = 0; col < colsLen; col++) {
+    final oldCell = getCellNode(tableNode, col, fromRow);
+    if (oldCell != null) {
+      transaction.updateNode(oldCell, {
+        TableCellBlockKeys.rowBackgroundColor: null,
+      });
     }
   }
 
